@@ -496,16 +496,19 @@ function handleEvent(msg) {
   }
 
   if (msg.type.startsWith('process_') || msg.type.startsWith('workflow_')) {
-    // Reset monitor panel when workflow starts from beginning
+    // Reset monitor panel when workflow starts or enters a new major step
     if (msg.type === 'workflow_step' && msg.data?.strategy === strat) {
       const s = (msg.data.step || '').toLowerCase();
-      if (s.startsWith('downloading') || s.startsWith('running backtest') || s.startsWith('stopping trade')) {
+      if (s.startsWith('downloading') || s.startsWith('running backtest') || s.startsWith('stopping trade') || s.startsWith('running hyperopt') || s.startsWith('starting workflow')) {
         monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
         allEpochs = [];
         currentEpochFile = '';
         renderEpochView();
         document.getElementById('epochFileName').textContent = '';
       }
+    }
+    if (msg.type === 'workflow_started' && msg.data?.strategy === strat) {
+      monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
     }
     // Refresh schedule info when workflow ends (next_run changes for interval mode)
     if (msg.type === 'workflow_completed' || msg.type === 'workflow_failed') {
@@ -1198,13 +1201,22 @@ async function loadSchedule() {
 function restoreMonitorState() {
   // Restore monitorState from server-side mirror (survives page reload / WS reconnect)
   const ms = state.monitor?.[strat];
-  if (!ms) return;
-  monitorState.file = ms.file || monitorState.file;
-  monitorState.waiting = ms.waiting ?? monitorState.waiting;
-  monitorState.oldFile = ms.old_file || monitorState.oldFile;
-  monitorState.lastAction = ms.last_action || monitorState.lastAction;
-  if (ms.last_best) monitorState.lastBest = ms.last_best;
-  if (ms.last_extracted) monitorState.lastExtracted = ms.last_extracted;
+  if (!ms) {
+    // Server has no monitor state — this means it was cleared (new workflow started)
+    // Only reset if workflow is running (avoid clearing after workflow completes)
+    const wfStatus = state.workflows?.[strat]?.status;
+    if (wfStatus === 'running' && (monitorState.file || monitorState.lastBest)) {
+      monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
+    }
+    return;
+  }
+  // Overwrite local state from server — use server values directly, not || merge
+  monitorState.file = ms.file;
+  monitorState.waiting = ms.waiting;
+  monitorState.oldFile = ms.old_file;
+  monitorState.lastAction = ms.last_action;
+  monitorState.lastBest = ms.last_best || null;
+  monitorState.lastExtracted = ms.last_extracted || null;
 
   // Auto-sync dropdown: if monitor is watching a file but dropdown doesn't match, fix it
   if (monitorState.file) {
