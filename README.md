@@ -1,5 +1,7 @@
 # FreqTrade Manager
 
+<img width="1425" height="773" alt="image" src="https://github.com/user-attachments/assets/871ea814-37a0-4701-9644-00a1aa756758" />
+
 A web-based management system for FreqTrade that automates the daily optimization cycle: **download data → backtest → hyperopt → extract best params → restart trade**.
 
 ## Features
@@ -16,8 +18,8 @@ A web-based management system for FreqTrade that automates the daily optimizatio
 ## Requirements
 
 - Windows 10+
-- Python 3.12+ (same venv as FreqTrade)
-- FreqTrade installed via git clone + pip in a venv
+- dedicated venv with Python 3.10+
+- FreqTrade better be installed separetely via git clone + pip, having a different venv
 
 ## Installation
 
@@ -26,7 +28,7 @@ A web-based management system for FreqTrade that automates the daily optimizatio
 cd ftmanager
 
 # Create a separate venv for the manager (or use your system Python)
-python -m venv .venv
+python -m venv .venv312
 .venv\Scripts\activate
 
 # Install dependencies
@@ -86,13 +88,13 @@ This generates `--timerange 20260110-` (with open end) or `--timerange 20260110-
 python main.py
 
 # With custom config path
-python main.py --config C:\myconfigs\ftmanager.yaml
+python main.py --config C:\my_ftmanager_config_path\ftmanager.yaml
 
 # Override port
 python main.py --port 9090
 ```
 
-Open `http://127.0.0.1:8080` in your browser.
+Open `http://127.0.0.1:8080` in your browser
 
 ## Dashboard
 
