@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<title>FreqTrade Manager</title>
+<style>
+:root {
+  --bg: #0f1117; --surface: #1a1d28; --surface2: #242736; --border: #2e3348;
+  --text: #e1e4ed; --text-dim: #8b8fa3; --accent: #6366f1; --accent-hover: #818cf8;
+  --green: #22c55e; --red: #ef4444; --yellow: #eab308; --orange: #f97316; --blue: #3b82f6;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+.container { max-width: 1400px; margin: 0 auto; padding: 16px; }
+
+header { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+header h1 { font-size: 20px; font-weight: 600; }
+header h1 span { color: var(--accent); }
+.conn-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+.conn-dot.connected { background: var(--green); }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-full { grid-column: 1 / -1; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.card h2 { font-size: 14px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+
+.strat-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.strat-tab { padding: 6px 16px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--text-dim); cursor: pointer; font-size: 13px; }
+.strat-tab:hover { border-color: var(--accent); color: var(--text); }
+.strat-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.btn { padding: 6px 14px; border-radius: 6px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 4px; }
+.btn-sm { padding: 3px 10px; font-size: 12px; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-success { background: var(--green); color: #fff; }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-warning { background: var(--yellow); color: #000; }
+.btn-outline { background: none; border: 1px solid var(--border); color: var(--text); }
+.btn-outline:hover { border-color: var(--accent); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.badge-idle { background: var(--surface2); color: var(--text-dim); }
+.badge-running { background: rgba(34,197,94,0.15); color: var(--green); }
+.badge-starting { background: rgba(234,179,8,0.15); color: var(--yellow); }
+.badge-stopping { background: rgba(249,115,22,0.15); color: var(--orange); }
+.badge-completed { background: rgba(59,130,246,0.15); color: var(--blue); }
+.badge-failed { background: rgba(239,68,68,0.15); color: var(--red); }
+.badge-cancelled { background: rgba(139,143,163,0.15); color: var(--text-dim); }
+
+/* Process rows */
+.proc-row { border-bottom: 1px solid var(--border); }
+.proc-row:last-child { border-bottom: none; }
+.proc-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; cursor: pointer; user-select: none; }
+.proc-header:hover { background: var(--surface2); margin: 0 -8px; padding: 8px; border-radius: 4px; }
+.proc-left { display: flex; align-items: center; gap: 10px; }
+.proc-label { font-weight: 500; min-width: 90px; }
+.proc-mini-stats { display: flex; gap: 12px; font-size: 11px; color: var(--text-dim); font-family: monospace; }
+.proc-right { display: flex; align-items: center; gap: 8px; }
+.proc-expand { font-size: 10px; color: var(--text-dim); transition: transform .2s; }
+.proc-expand.open { transform: rotate(90deg); }
+
+.proc-details { display: none; padding: 8px 0 12px 24px; font-size: 12px; }
+.proc-details.open { display: block; }
+.proc-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 16px; }
+.proc-detail-item { display: flex; justify-content: space-between; padding: 2px 0; }
+.proc-detail-item .lbl { color: var(--text-dim); }
+.proc-detail-item .val { font-family: monospace; }
+.proc-cmd { margin-top: 6px; padding: 6px 8px; background: #0a0c10; border-radius: 4px; font-family: monospace; font-size: 11px; color: var(--text-dim); word-break: break-all; }
+
+/* Workflow step toggles */
+.wf-toggles { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; padding: 8px 10px; background: var(--surface2); border-radius: 6px; }
+.wf-toggle { display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; }
+.wf-toggle input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; width: 14px; height: 14px; }
+.wf-toggle.disabled { opacity: 0.5; text-decoration: line-through; }
+
+/* Epoch table */
+.epoch-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.epoch-table th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border); color: var(--text-dim); font-weight: 500; white-space: nowrap; }
+.epoch-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-family: monospace; }
+.epoch-table tr.best { background: rgba(99,102,241,0.1); }
+.epoch-table tr:hover { background: var(--surface2); }
+.epoch-table th.sortable { cursor: pointer; user-select: none; }
+.epoch-table th.sortable:hover { color: var(--accent); }
+.epoch-table th.sort-asc::after { content: ' ▲'; font-size: 9px; }
+.epoch-table th.sort-desc::after { content: ' ▼'; font-size: 9px; }
+.epoch-view-tab { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); padding: 3px 8px !important; font-size: 11px !important; }
+.epoch-view-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+#epochFilterRow input { background: #fff; color: #111; border: 1px solid var(--border); border-radius: 3px; padding: 2px 4px; font-size: 11px; font-family: monospace; }
+#fthyptSelect, #fthyptSelect option { background: #fff !important; color: #111 !important; }
+.val-pos { color: var(--green); }
+.val-neg { color: var(--red); }
+
+.best-epoch { background: rgba(99,102,241,0.08); border: 1px solid var(--accent); border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+.best-epoch h3 { font-size: 13px; color: var(--accent); margin-bottom: 8px; }
+.best-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.best-stat { text-align: center; }
+.best-stat .val { font-size: 18px; font-weight: 700; font-family: monospace; }
+.best-stat .lbl { font-size: 11px; color: var(--text-dim); }
+
+.manual-extract { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.manual-extract input { width: 80px; padding: 4px 8px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; font-family: monospace; }
+.manual-extract label { font-size: 12px; color: var(--text-dim); }
+
+.wf-steps { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.wf-step { padding: 4px 10px; border-radius: 4px; font-size: 11px; background: var(--surface2); color: var(--text-dim); }
+.wf-step.active { background: var(--accent); color: #fff; }
+.wf-step.done { background: rgba(34,197,94,0.2); color: var(--green); }
+
+.log-viewer { background: #0a0c10; border: 1px solid var(--border); border-radius: 6px; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 11px; line-height: 1.6; padding: 10px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: var(--text-dim); }
+/* Synthetic log colors */
+.log-viewer .log-info { color: #16c60c; }
+.log-viewer .log-warn { color: #f9f1a5; }
+.log-viewer .log-error { color: #e74856; font-weight: bold; }
+.log-viewer .log-debug { color: #61d6d6; }
+.log-viewer .log-date { color: #767676; }
+.log-viewer .log-num-pos { color: #16c60c; }
+.log-viewer .log-num-neg { color: #e74856; }
+.log-viewer .log-pair { color: #3b78ff; }
+.log-viewer .log-best { color: #f9f1a5; font-weight: bold; }
+
+.output-tabs { display: flex; gap: 2px; margin-bottom: 8px; }
+.output-tab { padding: 5px 14px; border-radius: 6px 6px 0 0; border: 1px solid var(--border); border-bottom: none; background: var(--surface2); color: var(--text-dim); cursor: pointer; font-size: 12px; font-weight: 500; transition: all .15s; }
+.output-tab:hover { color: var(--text); background: var(--border); }
+.output-tab.active { background: #0a0c10; color: var(--text); border-color: var(--border); }
+
+.sched-info { font-size: 12px; color: var(--text-dim); margin-top: 8px; }
+.sched-info strong { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>⚡ <span>FreqTrade</span> Manager</h1>
+    <div class="conn-status">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connText">Disconnected</span>
+    </div>
+  </header>
+
+  <div class="strat-tabs" id="stratTabs"></div>
+
+  <div class="grid">
+    <!-- Processes -->
+    <div class="card grid-full">
+      <h2>Processes</h2>
+      <div id="processPanel"></div>
+    </div>
+
+    <!-- Workflow -->
+    <div class="card">
+      <h2>Workflow</h2>
+      <div id="workflowPanel">
+        <div class="wf-toggles" id="wfToggles"></div>
+        <div class="sched-info" id="schedInfo" style="margin-bottom:10px"></div>
+        <div class="btn-group" style="margin-bottom:12px">
+          <button class="btn btn-primary" onclick="api('workflow/start/'+strat,'POST')">▶ Run Workflow</button>
+          <button class="btn btn-danger" onclick="api('workflow/cancel/'+strat,'POST')">⬛ Cancel</button>
+          <button class="btn btn-outline" onclick="api('config/reload','POST')">🔄 Reload Config</button>
+        </div>
+        <div id="wfStatus"></div>
+        <div style="margin:8px 0" id="wfProgress"></div>
+        <div id="monitorInfo" style="display:none;margin:8px 0;padding:8px 10px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--accent);font-size:12px;line-height:1.7"></div>
+      </div>
+    </div>
+
+    <!-- Hyperopt Results -->
+    <div class="card">
+      <h2>Hyperopt Results</h2>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+        <select id="fthyptSelect" onchange="evaluateFile()" style="flex:1;background:#fff;color:#111;border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:12px;font-family:monospace">
+          <option value="">— select file —</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="loadFthyptFiles()" title="Refresh file list">🔄</button>
+      </div>
+      <div id="evalCriteria" style="display:none;margin-bottom:6px;font-size:11px;padding:4px 8px;background:var(--surface2);border-radius:4px;border-left:3px solid var(--accent);color:var(--text-dim)"></div>
+      <div id="evalResult" style="font-size:12px;color:var(--text-dim);margin-bottom:8px">No file selected</div>
+      <div id="bestEpoch"></div>
+      <div class="manual-extract">
+        <input type="number" id="manualEpochNum" min="1" placeholder="epoch #" style="width:70px" />
+        <button class="btn btn-outline btn-sm" onclick="manualExtract()">Extract</button>
+        <button class="btn btn-primary btn-sm" id="extractBestBtn" style="display:none" onclick="extractBest()">Extract Best</button>
+      </div>
+    </div>
+
+    <div class="card grid-full">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+        <h2 style="margin:0">Hyperopt Epochs</h2>
+        <div style="display:flex;gap:2px">
+          <button class="btn btn-sm epoch-view-tab active" onclick="setEpochView('best',this)">★ Best</button>
+          <button class="btn btn-sm epoch-view-tab" onclick="setEpochView('table',this)">📊 Table</button>
+          <button class="btn btn-sm epoch-view-tab" onclick="setEpochView('all',this)">📋 All</button>
+        </div>
+        <span style="font-size:11px;color:var(--text-dim)" id="epochCount"></span>
+        <span style="font-size:10px;color:var(--text-dim);font-family:monospace" id="epochFileName"></span>
+        <button class="btn btn-outline btn-sm" id="epochResetBtn" style="display:none;margin-left:auto;font-size:10px" onclick="resetTableFilters()">↺ Reset to criteria</button>
+      </div>
+      <!-- Table filter row (only in table view) -->
+      <div id="epochFilterRow" style="display:none;margin-bottom:6px;gap:4px;font-size:11px;flex-wrap:wrap;align-items:center">
+        <input id="fEpoch" type="text" placeholder="Epoch" style="width:50px;background:#fff;color:#111;border:1px solid var(--border);border-radius:3px;padding:2px 4px" oninput="applyTableFilters()">
+        <input id="fTrades" type="text" placeholder="Trades" style="width:55px;background:#fff;color:#111;border:1px solid var(--border);border-radius:3px;padding:2px 4px" oninput="applyTableFilters()">
+        <input id="fWDL" type="text" placeholder="W/D/L" style="width:55px;background:#fff;color:#111;border:1px solid var(--border);border-radius:3px;padding:2px 4px" oninput="applyTableFilters()">
+        <input id="fAvg" type="text" placeholder="Avg %" style="width:55px;background:#fff;color:#111;border:1px solid var(--border);border-radius:3px;padding:2px 4px" oninput="applyTableFilters()">
+        <input id="fTotal" type="text" placeholder="Total %" style="width:60px;background:#fff;color:#111;border:1px solid var(--border);border-radius:3px;padding:2px 4px" oninput="applyTableFilters()">
+        <input id="fDD" type="text" placeholder="DD %" style="width:55px;background:#fff;color:#111;border:1px solid var(--border);border-radius:3px;padding:2px 4px" oninput="applyTableFilters()">
+        <input id="fObj" type="text" placeholder="Obj" style="width:55px;background:#fff;color:#111;border:1px solid var(--border);border-radius:3px;padding:2px 4px" oninput="applyTableFilters()">
+        <span style="color:var(--text-dim);font-size:10px;margin-left:4px">use &gt;5 &lt;2 3..10</span>
+      </div>
+      <div id="criteriaInfo" style="display:none;margin-bottom:6px;font-size:11px;padding:4px 8px;background:var(--surface2);border-radius:4px;border-left:3px solid var(--cyan)"></div>
+      <div style="max-height:400px;overflow-y:auto;">
+        <table class="epoch-table">
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortEpochCol('epoch')">Epoch</th>
+              <th class="sortable" onclick="sortEpochCol('trades')">Trades</th>
+              <th>W/D/L</th>
+              <th class="sortable" onclick="sortEpochCol('avg_profit')">Avg %</th>
+              <th class="sortable" onclick="sortEpochCol('profit_total_pct')">Total %</th>
+              <th class="sortable" onclick="sortEpochCol('max_drawdown')">DD %</th>
+              <th class="sortable" onclick="sortEpochCol('objective')">Obj</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="epochBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="card grid-full">
+      <h2>Output</h2>
+      <div class="output-tabs" id="outputTabs">
+        <button class="output-tab active" onclick="selectOutput('trade')">Trade</button>
+        <button class="output-tab" onclick="selectOutput('download')">Download</button>
+        <button class="output-tab" onclick="selectOutput('backtest')">Backtest</button>
+        <button class="output-tab" onclick="selectOutput('hyperopt')">Hyperopt</button>
+        <button class="output-tab" onclick="selectOutput('hyperopt_show')">Extract</button>
+        <button class="output-tab" onclick="selectOutput('reload')">Reload</button>
+      </div>
+      <div class="log-viewer" id="outputViewer"></div>
+    </div>
+
+    <!-- System Logs -->
+    <div class="card grid-full">
+      <h2>System Logs</h2>
+      <div class="log-viewer" id="logViewer"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let strat = '';
+let ws = null;
+let state = {};
+let stepConfig = {};
+let reconnectTimer = null;
+let expandedProcs = new Set();
+let selectedOutput = 'trade';
+let systemLogs = []; // Local log buffer for persistence across refreshes
+let epochCriteria = []; // From config, used as default table filters
+
+// ── Synthetic log coloring ──
+function colorLine(text) {
+  // Escape HTML
+  let s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  // Strip any ANSI codes that might leak through (just in case)
+  s = s.replace(/\x1b\[[0-9;]*m/g, '');
+
+  // Detect log level and wrap entire line
+  if (/\bERROR\b|CRITICAL|Traceback|Exception/.test(s))
+    return `<span class="log-error">${s}</span>`;
+  if (/\bWARNING\b|\bWARN\b/.test(s))
+    return `<span class="log-warn">${s}</span>`;
+  if (/\bDEBUG\b/.test(s))
+    return `<span class="log-debug">${s}</span>`;
+
+  // Hyperopt best line
+  if (/\*$/.test(s.trim()) || /Best\s+result/.test(s))
+    return `<span class="log-best">${s}</span>`;
+
+  // Color parts within INFO lines
+  // Timestamp prefix
+  s = s.replace(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/, '<span class="log-date">$1</span>');
+
+  // Trading pairs like BTC/USDT, ETH/BTC
+  s = s.replace(/\b([A-Z]{2,10}\/[A-Z]{2,10}(?::[A-Z]{2,10})?)\b/g, '<span class="log-pair">$1</span>');
+
+  // Positive/negative percentages and numbers with sign
+  s = s.replace(/([\s,(])([\+]?\d+\.?\d*\s*%)/g, (m, pre, num) => {
+    const v = parseFloat(num);
+    const cls = v >= 0 ? 'log-num-pos' : 'log-num-neg';
+    return `${pre}<span class="${cls}">${num}</span>`;
+  });
+  s = s.replace(/([\s,(])(-\d+\.?\d*\s*%)/g, '$1<span class="log-num-neg">$2</span>');
+
+  return s;
+}
+
+async function api(path, method='GET') {
+  try {
+    const r = await fetch('/api/' + path, { method });
+    return await r.json();
+  } catch(e) { console.error('API error:', e); }
+}
+
+// ── Init ──
+async function init() {
+  const strategies = await api('strategies');
+  if (!strategies || !strategies.length) {
+    document.getElementById('stratTabs').innerHTML = '<span style="color:var(--red)">No strategies configured</span>';
+    return;
+  }
+  const tabs = document.getElementById('stratTabs');
+  tabs.innerHTML = strategies.map(s =>
+    `<button class="strat-tab" onclick="selectStrat('${s.name}')">${s.name}</button>`
+  ).join('');
+  selectStrat(strategies[0].name);
+  connectWS();
+  loadSchedule();
+}
+
+function selectStrat(name) {
+  strat = name;
+  monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
+  allEpochs = [];
+  epochSortCol = null; epochSortDir = null; tableFiltersActive = false;
+  document.querySelectorAll('.strat-tab').forEach(t =>
+    t.classList.toggle('active', t.textContent === name)
+  );
+  // Fetch state then restore monitor state from server
+  api('state').then(s => {
+    if (s) { state = s; restoreMonitorState(); refreshUI(); }
+  });
+  loadOutput();
+  loadStepConfig();
+  loadFthyptFiles();
+}
+
+// ── Workflow Step Toggles ──
+async function loadStepConfig() {
+  const data = await api('config');
+  if (!data) return;
+  const s = (data.strategies || []).find(x => x.name === strat);
+  if (!s) return;
+  stepConfig = {
+    download_data: s.download_data?.enabled !== false,
+    backtest: s.backtest?.enabled !== false,
+    hyperopt: s.hyperopt?.enabled !== false,
+    extract: s.extract?.enabled !== false,
+    restart: s.restart?.enabled !== false,
+    schedule: s.schedule?.enabled !== false,
+  };
+  epochCriteria = s.epoch_criteria || [];
+  renderToggles();
+}
+
+function renderToggles() {
+  const stepLabels = {download_data:'Download', backtest:'Backtest', hyperopt:'Hyperopt', extract:'Extract', restart:'Restart'};
+  const el = document.getElementById('wfToggles');
+  let html = '';
+
+  // Workflow step toggles
+  for (const [key, label] of Object.entries(stepLabels)) {
+    const checked = stepConfig[key] !== false ? 'checked' : '';
+    const cls = stepConfig[key] !== false ? '' : ' disabled';
+    html += `<label class="wf-toggle${cls}">
+      <input type="checkbox" ${checked} onchange="toggleStep('${key}', this.checked)" />
+      ${label}
+    </label>`;
+  }
+
+  // Separator + schedule toggle
+  html += `<span style="border-left:1px solid var(--border);margin:0 4px"></span>`;
+  const schedChecked = stepConfig.schedule !== false ? 'checked' : '';
+  const schedCls = stepConfig.schedule !== false ? '' : ' disabled';
+  html += `<label class="wf-toggle${schedCls}">
+    <input type="checkbox" ${schedChecked} onchange="toggleSchedule(this.checked)" />
+    🕐 Schedule
+  </label>`;
+
+  el.innerHTML = html;
+}
+
+async function toggleStep(step, enabled) {
+  const res = await api(`config/step/${strat}/${step}/${enabled}`, 'POST');
+  if (res?.success) { stepConfig[step] = enabled; renderToggles(); }
+}
+
+async function toggleSchedule(enabled) {
+  const res = await api(`config/schedule/${strat}/${enabled}`, 'POST');
+  if (res?.success) { stepConfig.schedule = enabled; renderToggles(); loadSchedule(); }
+}
+
+// ── WebSocket ──
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.onopen = () => {
+    document.getElementById('connDot').classList.add('connected');
+    document.getElementById('connText').textContent = 'Connected';
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  };
+  ws.onclose = () => {
+    document.getElementById('connDot').classList.remove('connected');
+    document.getElementById('connText').textContent = 'Disconnected';
+    reconnectTimer = setTimeout(connectWS, 3000);
+  };
+  ws.onmessage = (e) => handleEvent(JSON.parse(e.data));
+}
+
+function handleEvent(msg) {
+  if (msg.type === 'init') {
+    state = msg.data;
+    // Restore logs from server on connect/reconnect
+    if (state.logs && state.logs.length) {
+      systemLogs = [...state.logs];
+      const logDiv = document.getElementById('logViewer');
+      logDiv.innerHTML = systemLogs.map(l => colorLine(l)).join('\n');
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+    refreshUI();
+    return;
+  }
+  if (msg.type === 'ping') return;
+
+  if (msg.type === 'process_output' && msg.data.key) {
+    if (msg.data.key === selectedOutput + ':' + strat) appendOutput(msg.data.line);
+  }
+
+  if (msg.type === 'system_log' && msg.data.message) {
+    systemLogs.push(msg.data.message);
+    const logDiv = document.getElementById('logViewer');
+    logDiv.innerHTML += colorLine(msg.data.message) + '\n';
+    logDiv.scrollTop = logDiv.scrollHeight;
+    return;
+  }
+  if (msg.type === 'hyperopt_epoch' && msg.data.strategy === strat) {
+    // Only append to epochs table if we're viewing the monitored file
+    const sel = document.getElementById('fthyptSelect').value;
+    if (sel && monitorState.file && sel === monitorState.file) {
+      addEpochRow(msg.data.epoch);
+    }
+  }
+  if (msg.type === 'hyperopt_best' && msg.data.strategy === strat) {
+    // Only update the workflow panel (via updateMonitorInfo).
+  }
+  if (msg.type === 'fthypt_files_changed' && msg.data.strategy === strat) {
+    // File cleanup or external change — refresh dropdown and re-evaluate
+    loadFthyptFiles(true);
+  }
+  if (msg.type === 'hyperopt_monitor_status' && msg.data.strategy === strat) {
+    updateMonitorInfo(msg.data);
+    // When monitor starts watching a new file:
+    // 1. Clear old epochs from previous run
+    // 2. Auto-select the new file in dropdown + evaluate
+    if (msg.data.action === 'watching' && msg.data.file) {
+      allEpochs = [];
+      currentEpochFile = '';
+      renderEpochView();
+      autoSelectMonitoredFile(msg.data.file, 5);
+    }
+    // On new best: re-evaluate the current file to pick up new epochs from disk
+    if (msg.data.action === 'new_best' && monitorState.file) {
+      const sel = document.getElementById('fthyptSelect');
+      if (sel.value === monitorState.file) {
+        // File already selected — just re-evaluate to get updated best
+        evaluateFile();
+      } else {
+        // Not selected yet — select it with retry
+        autoSelectMonitoredFile(monitorState.file, 3);
+      }
+    }
+    // When extract/reload happens, re-evaluate to update best card
+    if (msg.data.action === 'extracted' || msg.data.action === 'reloaded') {
+      const sel = document.getElementById('fthyptSelect').value;
+      if (sel) evaluateFile();
+    }
+  }
+
+  if (msg.type === 'process_stats' && msg.data.key) {
+    const key = msg.data.key;
+    if (state.processes && state.processes[key]) {
+      state.processes[key].stats = msg.data.stats;
+      updateProcMiniStats(key);
+      if (expandedProcs.has(key)) updateProcDetails(key);
+    }
+    return;
+  }
+
+  if (msg.type.startsWith('process_') || msg.type.startsWith('workflow_')) {
+    // Reset monitor panel when workflow starts from beginning
+    if (msg.type === 'workflow_step' && msg.data?.strategy === strat) {
+      const s = (msg.data.step || '').toLowerCase();
+      if (s.startsWith('downloading') || s.startsWith('running backtest') || s.startsWith('stopping trade')) {
+        monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
+        allEpochs = [];
+        currentEpochFile = '';
+        renderEpochView();
+        document.getElementById('epochFileName').textContent = '';
+      }
+    }
+    // Refresh schedule info when workflow ends (next_run changes for interval mode)
+    if (msg.type === 'workflow_completed' || msg.type === 'workflow_failed') {
+      setTimeout(() => loadSchedule(), 2000);  // slight delay for scheduler to reschedule
+    }
+    api('state').then(s => { if(s) { state = s; refreshUI(); }});
+  }
+}
+
+// ── Helpers ──
+function badge(status) {
+  return `<span class="badge badge-${status||'idle'}">${status||'idle'}</span>`;
+}
+function fmtTime(ts) {
+  if (!ts || ts === 0) return '—';
+  return new Date(ts * 1000).toLocaleTimeString();
+}
+function fmtDuration(secs) {
+  if (!secs || secs <= 0) return '—';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.floor(secs % 60);
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+// ── Process Panel ──
+const PROC_TYPES = [
+  { id: 'trade', label: '🔄 Trade', hasReload: true },
+  { id: 'download', label: '📥 Download' },
+  { id: 'backtest', label: '📊 Backtest' },
+  { id: 'hyperopt', label: '🧬 Hyperopt' },
+  { id: 'hyperopt_show', label: '📋 Extract' },
+  { id: 'reload', label: '↻ Reload' },
+];
+
+function renderProcesses() {
+  const panel = document.getElementById('processPanel');
+  let html = '';
+  for (const t of PROC_TYPES) {
+    const key = t.id + ':' + strat;
+    const p = state.processes?.[key];
+    const status = p?.status || 'idle';
+    const running = status === 'running';
+    const st = p?.stats || {};
+    const expanded = expandedProcs.has(key);
+
+    let mini = '';
+    if (status === 'running' || status === 'completed' || status === 'failed') {
+      let remaining = '';
+      if (p?.timeout_at > 0 && status === 'running') {
+        const rem = Math.max(0, p.timeout_at - Date.now()/1000);
+        remaining = `<span style="color:var(--yellow)">⏳${fmtDuration(rem)}</span>`;
+      }
+      mini = `<span>⏱${fmtDuration(p?.runtime)}</span>${remaining}<span>CPU ${st.cpu_percent!=null?st.cpu_percent+'%':'—'}</span><span>RAM ${st.memory_mb!=null?st.memory_mb+'MB':'—'}</span><span>T:${st.num_threads||'—'}</span>${st.gpu_util!=null?`<span>🖥 ${st.gpu_util}% ${st.gpu_temp!=null?st.gpu_temp+'°C':''}</span>`:''}`;
+    }
+
+    let btns = '';
+    if (t.id === 'trade') {
+      btns = running
+        ? `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();api('trade/stop/${strat}','POST')">Stop</button>`
+        : `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();api('trade/start/${strat}','POST')">Start</button>`;
+      if (t.hasReload)
+        btns += ` <button class="btn btn-warning btn-sm" onclick="event.stopPropagation();api('trade/reload/${strat}','POST')" title="Graceful reload via freqtrade-client">↻ Reload</button>`;
+    } else if (t.id === 'hyperopt') {
+      btns = running
+        ? `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();api('hyperopt/stop/${strat}','POST')">Stop</button>`
+        : `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();api('hyperopt/start/${strat}','POST')">Start</button>`;
+    } else if (t.id === 'hyperopt_show' || t.id === 'reload') {
+      if (running)
+        btns = `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();api('process/stop/${t.id}/${strat}','POST')">Stop</button>`;
+    } else {
+      btns = running
+        ? `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();api('process/stop/${t.id}/${strat}','POST')">Stop</button>`
+        : `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();api('${t.id}/start/${strat}','POST')">Start</button>`;
+    }
+
+    let details = p ? buildProcDetails(p, st) : '';
+
+    html += `
+      <div class="proc-row" id="proc-${key.replace(':','-')}">
+        <div class="proc-header" onclick="toggleProc('${key}')">
+          <div class="proc-left">
+            <span class="proc-expand ${expanded?'open':''}">▶</span>
+            <span class="proc-label">${t.label}</span>
+            ${badge(status)}
+            <div class="proc-mini-stats" id="mini-${key.replace(':','-')}">${mini}</div>
+          </div>
+          <div class="proc-right">${btns}</div>
+        </div>
+        <div class="proc-details ${expanded?'open':''}" id="details-${key.replace(':','-')}">${details}</div>
+      </div>`;
+  }
+  panel.innerHTML = html;
+}
+
+function buildProcDetails(p, st) {
+  // For expanded details: show peak stats (last good values) when not running
+  const isLive = p.status === 'running';
+  const ds = isLive ? st : (p.peak_stats && (p.peak_stats.cpu_percent > 0 || p.peak_stats.memory_mb > 0) ? p.peak_stats : st);
+  const statsLabel = isLive ? '' : ' <span style="color:var(--text-dim);font-size:10px">(last recorded)</span>';
+
+  let gpuHtml = '';
+  const gs = isLive ? st : (p.peak_stats || st);
+  if (gs.gpu_util != null) {
+    const gl = isLive ? '' : statsLabel;
+    gpuHtml = `
+      <div class="proc-detail-item" style="grid-column:1/-1;margin-top:4px;border-top:1px solid var(--border);padding-top:4px">
+        <span class="lbl">GPU</span><span class="val">${gs.gpu_name||'—'}</span>
+      </div>
+      <div class="proc-detail-item"><span class="lbl">GPU Load${gl}</span><span class="val">${gs.gpu_util}%</span></div>
+      <div class="proc-detail-item"><span class="lbl">GPU Mem${gl}</span><span class="val">${gs.gpu_mem_mb!=null?Math.round(gs.gpu_mem_mb)+' MB':'—'}</span></div>
+      <div class="proc-detail-item"><span class="lbl">GPU Temp${gl}</span><span class="val">${gs.gpu_temp!=null?gs.gpu_temp+'°C':'—'}</span></div>
+      <div class="proc-detail-item"><span class="lbl">GPU Fan${gl}</span><span class="val">${gs.gpu_fan!=null?gs.gpu_fan+'%':'—'}</span></div>`;
+  }
+
+  return `
+    <div class="proc-detail-grid">
+      <div class="proc-detail-item"><span class="lbl">PID</span><span class="val">${p.pid||'—'}</span></div>
+      <div class="proc-detail-item"><span class="lbl">Status</span><span class="val">${p.status}</span></div>
+      <div class="proc-detail-item"><span class="lbl">Started</span><span class="val">${fmtTime(p.started_at)}</span></div>
+      <div class="proc-detail-item"><span class="lbl">Stopped</span><span class="val">${fmtTime(p.stopped_at)}</span></div>
+      <div class="proc-detail-item"><span class="lbl">Runtime</span><span class="val">${fmtDuration(p.runtime)}</span></div>
+      ${p.timeout_at > 0 ? `<div class="proc-detail-item"><span class="lbl">Remaining</span><span class="val" style="color:var(--yellow)">${p.status==='running' ? fmtDuration(Math.max(0, p.timeout_at - Date.now()/1000)) : '—'}</span></div>` : ''}
+      <div class="proc-detail-item"><span class="lbl">Exit Code</span><span class="val">${p.return_code!=null?p.return_code:'—'}</span></div>
+      <div class="proc-detail-item"><span class="lbl">CPU${statsLabel}</span><span class="val">${ds.cpu_percent!=null?ds.cpu_percent+'%':'—'}</span></div>
+      <div class="proc-detail-item"><span class="lbl">Memory${statsLabel}</span><span class="val">${ds.memory_mb!=null?ds.memory_mb+' MB':'—'}</span></div>
+      <div class="proc-detail-item"><span class="lbl">Threads${statsLabel}</span><span class="val">${ds.num_threads||'—'}</span></div>
+      ${gpuHtml}
+    </div>
+    ${p.error ? `<div style="color:var(--red);margin-top:4px;font-size:11px">Error: ${p.error}</div>` : ''}
+    ${p.command ? `<div class="proc-cmd">${p.command}</div>` : ''}`;
+}
+
+function toggleProc(key) {
+  const sk = key.replace(':', '-');
+  const det = document.getElementById('details-' + sk);
+  const arr = document.querySelector(`#proc-${sk} .proc-expand`);
+  if (expandedProcs.has(key)) {
+    expandedProcs.delete(key); det.classList.remove('open'); arr.classList.remove('open');
+  } else {
+    expandedProcs.add(key); det.classList.add('open'); arr.classList.add('open');
+  }
+}
+
+function updateProcMiniStats(key) {
+  const el = document.getElementById('mini-' + key.replace(':','-'));
+  if (!el) return;
+  const p = state.processes[key]; if (!p) return;
+  const st = p.stats || {};
+  let remaining = '';
+  if (p.timeout_at > 0 && p.status === 'running') {
+    const rem = Math.max(0, p.timeout_at - Date.now()/1000);
+    remaining = `<span style="color:var(--yellow)">⏳${fmtDuration(rem)}</span>`;
+  }
+  el.innerHTML = `<span>⏱${fmtDuration(p.runtime)}</span>${remaining}<span>CPU ${st.cpu_percent!=null?st.cpu_percent+'%':'—'}</span><span>RAM ${st.memory_mb!=null?st.memory_mb+'MB':'—'}</span><span>T:${st.num_threads||'—'}</span>${st.gpu_util!=null?`<span>🖥 ${st.gpu_util}% ${st.gpu_temp!=null?st.gpu_temp+'°C':''}</span>`:''}`;
+}
+
+function updateProcDetails(key) {
+  const el = document.getElementById('details-' + key.replace(':','-'));
+  if (!el) return;
+  const p = state.processes[key]; if (!p) return;
+  el.innerHTML = buildProcDetails(p, p.stats || {});
+}
+
+// ── Hyperopt File Selector ──
+let evalBestEpoch = null;
+
+async function loadFthyptFiles(autoEval = true) {
+  const data = await api(`hyperopt/files/${strat}?_t=${Date.now()}`);
+  const sel = document.getElementById('fthyptSelect');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— select file —</option>';
+  for (const f of (data?.files || [])) {
+    const opt = document.createElement('option');
+    opt.value = f.name;
+    opt.textContent = f.name;
+    sel.appendChild(opt);
+  }
+  if (prev && [...sel.options].some(o => o.value === prev)) {
+    sel.value = prev;
+    if (autoEval) evaluateFile();
+  } else if (autoEval && sel.options.length > 1) {
+    sel.selectedIndex = 1;
+    evaluateFile();
+  }
+}
+
+async function autoSelectMonitoredFile(targetFile, retries) {
+  /**Refresh file list, select the monitored file, and ALWAYS re-evaluate.
+   * Re-evaluation is critical because the file content grows as new epochs arrive.*/
+  await loadFthyptFiles(false);
+  const sel = document.getElementById('fthyptSelect');
+  if ([...sel.options].some(o => o.value === targetFile)) {
+    sel.value = targetFile;
+    evaluateFile();  // Always re-evaluate — file content may have changed
+  } else if (retries > 0) {
+    setTimeout(() => autoSelectMonitoredFile(targetFile, retries - 1), 3000);
+  }
+}
+
+async function evaluateFile() {
+  const file = document.getElementById('fthyptSelect').value;
+  const el = document.getElementById('evalResult');
+  const bestBtn = document.getElementById('extractBestBtn');
+  const criteriaEl = document.getElementById('evalCriteria');
+  evalBestEpoch = null;
+  bestBtn.style.display = 'none';
+  criteriaEl.style.display = 'none';
+
+  if (!file) {
+    el.textContent = 'No file selected';
+    document.getElementById('bestEpoch').innerHTML = '';
+    document.getElementById('epochFileName').textContent = '';
+    allEpochs = [];
+    renderEpochView();
+    return;
+  }
+
+  const data = await api(`hyperopt/evaluate/${strat}?file=${encodeURIComponent(file)}&_t=${Date.now()}`);
+  if (!data) { el.textContent = 'Error loading file'; return; }
+
+  el.textContent = `${data.total} epochs`;
+
+  // Show criteria from config
+  if (data.criteria && data.criteria.length > 0) {
+    const desc = data.criteria.map(c => {
+      let s = '';
+      if (c.operator && c.value != null) s += `${c.field} ${c.operator} ${c.value}`;
+      if (c.sort) s += (s ? ', ' : '') + `sort: ${c.field} ${c.sort}`;
+      return s;
+    }).filter(Boolean).join(' │ ');
+    criteriaEl.innerHTML = `<span style="color:var(--accent)">📋 Criteria:</span> ${desc}`;
+    criteriaEl.style.display = '';
+    // Also update epochCriteria for the table view
+    epochCriteria = data.criteria;
+  }
+
+  if (data.best) {
+    evalBestEpoch = data.best.epoch;
+    renderBestEpoch(data.best);
+    bestBtn.style.display = '';
+  } else {
+    document.getElementById('bestEpoch').innerHTML = '<span style="color:var(--text-dim)">No epoch matches criteria</span>';
+  }
+
+  // Load ALL epochs into the HYPEROPT EPOCHS panel
+  allEpochs = data.epochs || [];
+  currentEpochFile = file;
+  document.getElementById('epochFileName').textContent = file;
+  renderEpochView();
+}
+
+function extractBest() {
+  if (evalBestEpoch) api(`hyperopt/extract/${strat}/${evalBestEpoch}`, 'POST');
+}
+
+function manualExtract() {
+  const num = document.getElementById('manualEpochNum').value;
+  if (!num || num < 1) return;
+  api(`hyperopt/extract/${strat}/${num}`, 'POST');
+}
+
+// ── Workflow ──
+let monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
+
+function renderWorkflow() {
+  const wfData = state.workflows?.[strat];
+  const status = wfData?.status || 'idle';
+  const step = wfData?.step || '';
+  document.getElementById('wfStatus').innerHTML = `Status: ${badge(status)} ${step ? `<span style="margin-left:8px;color:var(--text-dim)">${step}</span>` : ''}`;
+
+  const steps = ['Download', 'Backtest', 'Hyperopt'];
+  const stepMap = {
+    'downloading data': 0, 'running backtest': 1, 'running hyperopt': 2,
+    'extracting': 2, 'reloading trade': 2, 'restoring trade': 2, 'stopping trade': -1,
+  };
+  let activeIdx = -1;
+  for (const [prefix, idx] of Object.entries(stepMap)) {
+    if (step.toLowerCase().startsWith(prefix)) activeIdx = idx;
+  }
+  if (status === 'running') {
+    document.getElementById('wfProgress').innerHTML = `<div class="wf-steps">${
+      steps.map((s, i) =>
+        `<span class="wf-step ${i < activeIdx ? 'done' : i === activeIdx ? 'active' : ''}">${s}</span>`
+      ).join('<span style="color:var(--text-dim)">→</span>')
+    }</div>`;
+  } else {
+    document.getElementById('wfProgress').innerHTML = '';
+  }
+  // Always render monitor panel — it shows monitoring/best/extract status
+  // even after workflow finishes
+  renderMonitorPanel();
+}
+
+function updateMonitorInfo(data) {
+  const a = data.action;
+  const e = data.epoch;
+  if (a === 'waiting') {
+    monitorState.waiting = true;
+    monitorState.oldFile = data.old_file;
+    monitorState.file = null;
+  } else if (a === 'watching') {
+    monitorState.waiting = false;
+    monitorState.file = data.file;
+  } else if (a === 'new_best' && e) {
+    monitorState.lastBest = e;
+    monitorState.lastAction = 'new_best';
+  } else if (a === 'extracted' && e) {
+    monitorState.lastExtracted = e;
+    monitorState.lastAction = 'extracted';
+  } else if (a === 'reloaded' && e) {
+    monitorState.lastAction = 'reloaded';
+  } else if (a === 'extract_failed' && e) {
+    monitorState.lastAction = 'extract_failed';
+  }
+  renderMonitorPanel();
+}
+
+function renderMonitorPanel() {
+  const el = document.getElementById('monitorInfo');
+  const m = monitorState;
+  if (!m.file && !m.lastBest && !m.lastExtracted && !m.waiting) { el.style.display = 'none'; return; }
+
+  let html = '';
+
+  if (m.waiting && !m.file) {
+    html += `<div style="margin-bottom:4px"><span style="color:var(--yellow)">⏳ Waiting for new fthypt file...</span>`;
+    if (m.oldFile) html += ` <span style="color:var(--text-dim);font-size:11px">(ignoring old: ${m.oldFile})</span>`;
+    html += `</div>`;
+  } else if (m.file) {
+    html += `<div style="margin-bottom:4px"><span style="color:var(--cyan)">📁 Monitoring:</span> <code style="font-size:11px">${m.file}</code></div>`;
+  }
+
+  if (m.lastBest) {
+    const e = m.lastBest;
+    html += `<div style="margin-bottom:4px"><span style="color:var(--yellow)">★ Best Candidate:</span> epoch <b>#${e.epoch}</b> &nbsp;`
+      + `<span class="${e.profit_total_pct>=0?'val-pos':'val-neg'}">${e.profit_total_pct.toFixed(2)}%</span> profit &nbsp;`
+      + `<span class="${e.max_drawdown>2?'val-neg':'val-pos'}">${e.max_drawdown.toFixed(2)}%</span> dd &nbsp;`
+      + `${e.trades} trades (${e.wins}/${e.draws}/${e.losses}) &nbsp;`
+      + `obj: ${e.objective.toFixed(5)}`
+      + `</div>`;
+  }
+
+  if (m.lastExtracted) {
+    const e = m.lastExtracted;
+    const actionBadge = m.lastAction === 'reloaded'
+      ? '<span style="background:var(--green);color:#000;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">EXTRACTED + RELOADED</span>'
+      : m.lastAction === 'extracted'
+      ? '<span style="background:var(--cyan);color:#000;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">EXTRACTED</span>'
+      : m.lastAction === 'extract_failed'
+      ? '<span style="background:var(--red);color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">EXTRACT FAILED</span>'
+      : '';
+    html += `<div><span style="color:var(--green)">✅ Last Extracted:</span> epoch <b>#${e.epoch}</b>${actionBadge} &nbsp;`
+      + `<span class="${e.profit_total_pct>=0?'val-pos':'val-neg'}">${e.profit_total_pct.toFixed(2)}%</span> profit &nbsp;`
+      + `<span class="${e.max_drawdown>2?'val-neg':'val-pos'}">${e.max_drawdown.toFixed(2)}%</span> dd &nbsp;`
+      + `${e.trades} trades (${e.wins}/${e.draws}/${e.losses}) &nbsp;`
+      + `avg: ${e.avg_profit.toFixed(2)}% &nbsp;`
+      + `obj: ${e.objective.toFixed(5)}`
+      + `</div>`;
+  }
+
+  el.innerHTML = html;
+  el.style.display = '';
+}
+
+// ── Epochs ──
+let allEpochs = [];
+let currentEpochFile = ''; // Tracks which file allEpochs is loaded from
+let epochView = 'best'; // 'best' | 'table' | 'all'
+let epochSortCol = null, epochSortDir = null;
+let tableFiltersActive = false;
+
+function setEpochView(view, btn) {
+  epochView = view;
+  document.querySelectorAll('.epoch-view-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const filterRow = document.getElementById('epochFilterRow');
+  const resetBtn = document.getElementById('epochResetBtn');
+  const criteriaInfo = document.getElementById('criteriaInfo');
+  filterRow.style.display = view === 'table' ? 'flex' : 'none';
+  resetBtn.style.display = (view === 'table' && tableFiltersActive) ? '' : 'none';
+  // Show criteria summary when in default mode
+  if (view === 'table' && !tableFiltersActive && epochCriteria.length > 0) {
+    const desc = epochCriteria.map(c => {
+      let s = '';
+      if (c.operator && c.value != null) s += `${c.field} ${c.operator} ${c.value}`;
+      if (c.sort) s += (s ? ', ' : '') + `sort: ${c.field} ${c.sort}`;
+      return s;
+    }).filter(Boolean).join(' │ ');
+    criteriaInfo.innerHTML = `<span style="color:var(--cyan)">📋 Criteria:</span> ${desc}`;
+    criteriaInfo.style.display = '';
+  } else {
+    criteriaInfo.style.display = 'none';
+  }
+  renderEpochView();
+}
+
+function renderEpochs() {
+  // allEpochs is driven by evaluateFile() and WS events, not state refresh.
+  // State refresh only provides epoch count for display.
+  const epochData = state.hyperopt?.[strat];
+  if (!epochData && allEpochs.length === 0) {
+    document.getElementById('epochBody').innerHTML = '<tr><td colspan="8" style="color:var(--text-dim);text-align:center;padding:20px">No hyperopt data</td></tr>';
+    document.getElementById('epochCount').textContent = '';
+    return;
+  }
+  // Don't overwrite allEpochs — they come from evaluateFile()
+  renderEpochView();
+}
+
+function addEpochRow(e) {
+  const existing = allEpochs.find(x => x.epoch === e.epoch);
+  if (!existing) allEpochs.push(e);
+  const countEl = document.getElementById('epochCount');
+  const current = parseInt(countEl.textContent.match(/\d+/)?.[0] || '0');
+  const newCount = Math.max(current, allEpochs.length);
+  countEl.textContent = `${newCount} epochs`;
+  renderEpochView();
+}
+
+function renderEpochView() {
+  const tbody = document.getElementById('epochBody');
+  const countEl = document.getElementById('epochCount');
+  let rows = [];
+
+  if (epochView === 'best') {
+    // Show only epochs freqtrade marked as best (is_best flag) — these are epochs
+    // with lower objective/loss than all previous ones
+    rows = allEpochs.filter(e => e.is_best).slice().sort((a, b) => a.epoch - b.epoch);
+    countEl.textContent = `${rows.length} best of ${allEpochs.length} epochs`;
+  } else if (epochView === 'all') {
+    rows = allEpochs.slice().sort((a, b) => b.epoch - a.epoch); // newest first
+    countEl.textContent = `${allEpochs.length} epochs`;
+  } else if (epochView === 'table') {
+    rows = getFilteredSortedEpochs();
+    countEl.textContent = `${rows.length} matching of ${allEpochs.length} epochs`;
+  }
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="color:var(--text-dim);text-align:center;padding:16px">${
+      epochView === 'best' ? 'No best epochs yet' : epochView === 'table' ? 'No epochs match filters/criteria' : 'No epochs yet'
+    }</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(e => {
+    const isBest = e.is_best;
+    return `<tr class="${isBest ? 'best' : ''}">
+      <td>${isBest ? '★ ' : ''}${e.epoch}</td>
+      <td>${e.trades}</td>
+      <td>${e.wins}/${e.draws}/${e.losses}</td>
+      <td class="${e.avg_profit >= 0 ? 'val-pos' : 'val-neg'}">${e.avg_profit.toFixed(2)}%</td>
+      <td class="${e.profit_total_pct >= 0 ? 'val-pos' : 'val-neg'}">${e.profit_total_pct.toFixed(2)}%</td>
+      <td class="${e.max_drawdown > 2 ? 'val-neg' : 'val-pos'}">${e.max_drawdown.toFixed(2)}%</td>
+      <td>${e.objective.toFixed(5)}</td>
+      <td><button class="btn btn-outline" style="padding:2px 8px;font-size:11px" onclick="api('hyperopt/extract/${strat}/${e.epoch}','POST')">Extract</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Table view: filter + sort ──
+function parseFilterExpr(expr) {
+  // Parse expressions like: >5, <2, >=10, <=3, =5, 5 (exact), 5..10 (range)
+  if (!expr || !expr.trim()) return null;
+  expr = expr.trim();
+  const rangeMatch = expr.match(/^(-?[\d.]+)\s*\.\.\s*(-?[\d.]+)$/);
+  if (rangeMatch) return { type: 'range', lo: parseFloat(rangeMatch[1]), hi: parseFloat(rangeMatch[2]) };
+  const opMatch = expr.match(/^([<>=!]+)\s*(-?[\d.]+)$/);
+  if (opMatch) return { type: 'op', op: opMatch[1], val: parseFloat(opMatch[2]) };
+  const numVal = parseFloat(expr);
+  if (!isNaN(numVal)) return { type: 'op', op: '==', val: numVal };
+  // Text search (for W/D/L)
+  return { type: 'text', text: expr.toLowerCase() };
+}
+
+function matchFilter(value, filter, textVal) {
+  if (!filter) return true;
+  if (filter.type === 'range') return value >= filter.lo && value <= filter.hi;
+  if (filter.type === 'text') return (textVal || String(value)).toLowerCase().includes(filter.text);
+  const { op, val } = filter;
+  if (op === '<') return value < val;
+  if (op === '<=') return value <= val;
+  if (op === '>') return value > val;
+  if (op === '>=') return value >= val;
+  if (op === '==' || op === '=') return Math.abs(value - val) < 0.001;
+  if (op === '!=' || op === '!') return Math.abs(value - val) >= 0.001;
+  return true;
+}
+
+function getFilteredSortedEpochs() {
+  let rows = allEpochs.slice();
+
+  if (!tableFiltersActive && epochCriteria.length > 0) {
+    // Default mode: apply epoch_criteria from config
+    const fieldMap = {
+      'max_drawdown': e => e.max_drawdown,
+      'profit_total_pct': e => e.profit_total_pct,
+      'trades': e => e.trades,
+      'avg_profit': e => e.avg_profit,
+      'objective': e => e.objective,
+      'wins': e => e.wins, 'draws': e => e.draws, 'losses': e => e.losses,
+    };
+
+    // Filter: remove degenerate (0 trades) first
+    rows = rows.filter(e => e.trades > 0);
+
+    for (const c of epochCriteria) {
+      if (c.operator && c.value != null) {
+        const getter = fieldMap[c.field] || (e => e[c.field] ?? 0);
+        rows = rows.filter(e => {
+          const v = getter(e);
+          if (c.operator === '<') return v < c.value;
+          if (c.operator === '<=') return v <= c.value;
+          if (c.operator === '>') return v > c.value;
+          if (c.operator === '>=') return v >= c.value;
+          if (c.operator === '==' || c.operator === '=') return Math.abs(v - c.value) < 0.001;
+          return true;
+        });
+      }
+    }
+
+    // Sort: first criterion = primary (applied last for stable sort)
+    const sorts = epochCriteria.filter(c => c.sort).map(c => ({
+      field: c.field,
+      desc: c.sort.toLowerCase() === 'desc'
+    }));
+    for (const s of sorts.reverse()) {
+      const getter = fieldMap[s.field] || (e => e[s.field] ?? 0);
+      rows.sort((a, b) => s.desc ? getter(b) - getter(a) : getter(a) - getter(b));
+    }
+
+    return rows;
+  }
+
+  // Custom filter mode: use filter inputs
+  const fEpoch = parseFilterExpr(document.getElementById('fEpoch')?.value);
+  const fTrades = parseFilterExpr(document.getElementById('fTrades')?.value);
+  const fWDL = parseFilterExpr(document.getElementById('fWDL')?.value);
+  const fAvg = parseFilterExpr(document.getElementById('fAvg')?.value);
+  const fTotal = parseFilterExpr(document.getElementById('fTotal')?.value);
+  const fDD = parseFilterExpr(document.getElementById('fDD')?.value);
+  const fObj = parseFilterExpr(document.getElementById('fObj')?.value);
+
+  rows = rows.filter(e => {
+    if (!matchFilter(e.epoch, fEpoch)) return false;
+    if (!matchFilter(e.trades, fTrades)) return false;
+    if (fWDL) {
+      const wdlStr = `${e.wins}/${e.draws}/${e.losses}`;
+      if (fWDL.type === 'text' && !wdlStr.toLowerCase().includes(fWDL.text)) return false;
+    }
+    if (!matchFilter(e.avg_profit, fAvg)) return false;
+    if (!matchFilter(e.profit_total_pct, fTotal)) return false;
+    if (!matchFilter(e.max_drawdown, fDD)) return false;
+    if (!matchFilter(e.objective, fObj)) return false;
+    return true;
+  });
+
+  // Apply sort
+  if (epochSortCol) {
+    const rev = epochSortDir === 'desc';
+    rows.sort((a, b) => {
+      const va = a[epochSortCol] ?? 0, vb = b[epochSortCol] ?? 0;
+      return rev ? vb - va : va - vb;
+    });
+  }
+
+  return rows;
+}
+
+function sortEpochCol(col) {
+  if (epochView !== 'table') {
+    setEpochView('table', document.querySelectorAll('.epoch-view-tab')[1]);
+  }
+  if (epochSortCol === col) {
+    epochSortDir = epochSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    epochSortCol = col;
+    epochSortDir = col === 'max_drawdown' || col === 'objective' ? 'asc' : 'desc';
+  }
+  tableFiltersActive = true;
+  document.getElementById('epochResetBtn').style.display = '';
+  // Update header indicators
+  document.querySelectorAll('.epoch-table th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+  event.target.classList.add(`sort-${epochSortDir}`);
+  renderEpochView();
+}
+
+function applyTableFilters() {
+  tableFiltersActive = true;
+  document.getElementById('epochResetBtn').style.display = '';
+  document.getElementById('criteriaInfo').style.display = 'none';
+  renderEpochView();
+}
+
+function resetTableFilters() {
+  document.querySelectorAll('#epochFilterRow input').forEach(i => i.value = '');
+  epochSortCol = null;
+  epochSortDir = null;
+  tableFiltersActive = false;
+  document.getElementById('epochResetBtn').style.display = 'none';
+  document.querySelectorAll('.epoch-table th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+  // Re-show criteria info
+  if (epochCriteria.length > 0) {
+    const desc = epochCriteria.map(c => {
+      let s = '';
+      if (c.operator && c.value != null) s += `${c.field} ${c.operator} ${c.value}`;
+      if (c.sort) s += (s ? ', ' : '') + `sort: ${c.field} ${c.sort}`;
+      return s;
+    }).filter(Boolean).join(' │ ');
+    const ci = document.getElementById('criteriaInfo');
+    ci.innerHTML = `<span style="color:var(--cyan)">📋 Criteria:</span> ${desc}`;
+    ci.style.display = '';
+  }
+  renderEpochView();
+}
+
+function renderBestEpoch(e) {
+  if (!e) return;
+  document.getElementById('bestEpoch').innerHTML = `
+    <div class="best-epoch">
+      <h3>★ Best Epoch: #${e.epoch}</h3>
+      <div class="best-stats">
+        <div class="best-stat"><div class="val ${e.profit_total_pct>=0?'val-pos':'val-neg'}">${e.profit_total_pct.toFixed(2)}%</div><div class="lbl">Total Profit</div></div>
+        <div class="best-stat"><div class="val ${e.max_drawdown<=2?'val-pos':'val-neg'}">${e.max_drawdown.toFixed(2)}%</div><div class="lbl">Max Drawdown</div></div>
+        <div class="best-stat"><div class="val">${e.trades}</div><div class="lbl">Trades</div></div>
+        <div class="best-stat"><div class="val">${e.wins}/${e.draws}/${e.losses}</div><div class="lbl">W/D/L</div></div>
+        <div class="best-stat"><div class="val">${e.avg_profit.toFixed(2)}%</div><div class="lbl">Avg Profit</div></div>
+        <div class="best-stat"><div class="val">${e.objective.toFixed(5)}</div><div class="lbl">Objective</div></div>
+      </div>
+      <div style="margin-top:8px">
+        <button class="btn btn-primary" onclick="api('hyperopt/extract/${strat}/${e.epoch}','POST')">Extract This Epoch</button>
+      </div>
+    </div>`;
+}
+
+// ── Output ──
+function selectOutput(type) {
+  selectedOutput = type;
+  document.querySelectorAll('.output-tab').forEach(t => {
+    const tabMap = {'Trade':'trade','Download':'download','Backtest':'backtest','Hyperopt':'hyperopt','Extract':'hyperopt_show','Reload':'reload'};
+    t.classList.toggle('active', tabMap[t.textContent] === type);
+  });
+  loadOutput();
+}
+
+async function loadOutput() {
+  const data = await api(`output/${selectedOutput}/${strat}?tail=200`);
+  const viewer = document.getElementById('outputViewer');
+  const lines = data?.lines || [];
+  viewer.innerHTML = lines.map(l => colorLine(l)).join('\n');
+  viewer.scrollTop = viewer.scrollHeight;
+}
+
+function appendOutput(line) {
+  const viewer = document.getElementById('outputViewer');
+  viewer.innerHTML += colorLine(line) + '\n';
+  if (viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight < 100)
+    viewer.scrollTop = viewer.scrollHeight;
+}
+
+// ── Schedule ──
+async function loadSchedule() {
+  const data = await api('schedule');
+  if (!data) return;
+  let html = '';
+  const s = (data.schedules || []).find(x => x.strategy === strat);
+  if (s && s.enabled) {
+    html += `<strong>Schedule:</strong> ${s.interval_hours > 0 ? `Wait ${s.interval_hours}h after completion, then repeat` : `Cron: ${s.cron}`}<br>`;
+  } else {
+    html += 'Schedule disabled for this strategy<br>';
+  }
+  const jobs = (data.jobs || []).filter(j => j.name?.includes(strat));
+  for (const j of jobs) html += `Next run: <strong>${j.next_run || 'N/A'}</strong><br>`;
+  document.getElementById('schedInfo').innerHTML = html;
+}
+
+// ── Refresh ──
+function restoreMonitorState() {
+  // Restore monitorState from server-side mirror (survives page reload / WS reconnect)
+  const ms = state.monitor?.[strat];
+  if (!ms) return;
+  monitorState.file = ms.file || monitorState.file;
+  monitorState.waiting = ms.waiting ?? monitorState.waiting;
+  monitorState.oldFile = ms.old_file || monitorState.oldFile;
+  monitorState.lastAction = ms.last_action || monitorState.lastAction;
+  if (ms.last_best) monitorState.lastBest = ms.last_best;
+  if (ms.last_extracted) monitorState.lastExtracted = ms.last_extracted;
+}
+
+function refreshUI() {
+  renderProcesses();
+  renderWorkflow();
+  renderEpochs();
+  // Logs are handled by: init event (server restore) + system_log events (live append)
+  // On periodic state refresh, just ensure logDiv isn't empty if we have local logs
+  if (systemLogs.length > 0) {
+    const logDiv = document.getElementById('logViewer');
+    if (!logDiv.innerHTML.trim()) {
+      logDiv.innerHTML = systemLogs.map(l => colorLine(l)).join('\n');
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+  }
+}
+
+// Runtime counter every second
+setInterval(() => {
+  if (!state.processes) return;
+  for (const [key, p] of Object.entries(state.processes)) {
+    if (p.status === 'running' && p.started_at > 0) {
+      p.runtime = Date.now()/1000 - p.started_at;
+      updateProcMiniStats(key);
+      if (expandedProcs.has(key)) updateProcDetails(key);
+    }
+  }
+}, 1000);
+
+// Full state refresh every 10s
+setInterval(async () => {
+  const s = await api('state');
+  if (s) { state = s; restoreMonitorState(); refreshUI(); }
+}, 10000);
+
+init();
+</script>
+</body>
+</html>
