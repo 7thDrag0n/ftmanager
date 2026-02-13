@@ -60,7 +60,7 @@ epoch_criteria:
     operator: "<="
     value: 2.0
   - field: "profit_total_pct"  # Sort remaining by profit (descending)
-    operator: ">="
+    operator: ">"
     value: 0
     sort: "desc"
 ```
