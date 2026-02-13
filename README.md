@@ -27,9 +27,9 @@ A web-based management system for FreqTrade that automates the daily optimizatio
 # Clone or copy the freqtrade_manager folder anywhere on your system
 cd ftmanager
 
-# Create a separate venv for the manager (or use your system Python)
+# Create a separate venv for the manager (or use your system Python ex. 3.12)
 python -m venv .venv312
-.venv\Scripts\activate
+.venv312\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
