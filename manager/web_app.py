@@ -47,6 +47,20 @@ def create_app(
     cfg_holder = ConfigHolder(config_path, config)
     templates_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
 
+    # Prevent browser caching of API responses
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request
+
+    class NoCacheMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+            if request.url.path.startswith("/api/"):
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+                response.headers["Pragma"] = "no-cache"
+            return response
+
+    app.add_middleware(NoCacheMiddleware)
+
     def _get_strat(strategy_name: str) -> StrategyConfig:
         cfg = cfg_holder.get()
         proc_mgr.config = cfg
