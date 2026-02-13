@@ -1,0 +1,14 @@
+{
+  "api_server": {
+    "enabled": true,
+    "listen_ip_address": "machine3",
+    "listen_port": 48200,
+    "verbosity": "error",
+    "enable_openapi": true,
+    "username": "",
+    "password": "",
+    "ws_token": "",
+    "jwt_secret_key": "",
+    "CORS_origins": ["http://machine1:49001","http://machine2:8888"]
+  }
+}
