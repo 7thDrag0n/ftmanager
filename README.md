@@ -15,7 +15,7 @@ A web-based management system for FreqTrade that automates the daily optimizatio
 
 ## Requirements
 
-- Windows 10/11
+- Windows 10+
 - Python 3.12+ (same venv as FreqTrade)
 - FreqTrade installed via git clone + pip in a venv
 
@@ -23,7 +23,7 @@ A web-based management system for FreqTrade that automates the daily optimizatio
 
 ```bash
 # Clone or copy the freqtrade_manager folder anywhere on your system
-cd freqtrade_manager
+cd ftmanager
 
 # Create a separate venv for the manager (or use your system Python)
 python -m venv .venv
@@ -41,10 +41,10 @@ Edit `config.yaml` before first run. All settings are documented inline.
 
 | Setting | Description | Default |
 |---|---|---|
-| `freqtrade.directory` | Path to FreqTrade git clone | `D:\python\freqtrade` |
+| `freqtrade.directory` | Path to FreqTrade git clone | `C:\\path_to\\freqtrade` |
 | `freqtrade.venv_path` | Venv folder inside FT dir | `.venv312` |
 | `strategies[].name` | Strategy class name | `Predict_LSTM_Futures` |
-| `strategies[].config` | Config path (relative to FT dir) | `user_data/strategies/.../config.json` |
+| `strategies[].config` | Config path (relative to FT dir) | `user_data/strategies/my_strategy_path/config.json` |
 | `schedule.cron` | When to run workflow | `0 2 * * *` (daily 2 AM) |
 | `web.port` | Dashboard port | `8080` |
 
@@ -86,7 +86,7 @@ This generates `--timerange 20260110-` (with open end) or `--timerange 20260110-
 python main.py
 
 # With custom config path
-python main.py --config D:\myconfigs\ftmanager.yaml
+python main.py --config C:\myconfigs\ftmanager.yaml
 
 # Override port
 python main.py --port 9090
