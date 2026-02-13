@@ -305,7 +305,7 @@ function colorLine(text) {
 
 async function api(path, method='GET') {
   try {
-    const r = await fetch('/api/' + path, { method });
+    const r = await fetch('/api/' + path, { method, cache: 'no-store' });
     return await r.json();
   } catch(e) { console.error('API error:', e); }
 }
