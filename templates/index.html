@@ -464,7 +464,8 @@ function handleEvent(msg) {
       allEpochs = [];
       currentEpochFile = '';
       renderEpochView();
-      autoSelectMonitoredFile(msg.data.file, 5);
+      // Delay first attempt — file was just created, give FS time to sync
+      setTimeout(() => autoSelectMonitoredFile(msg.data.file, 8), 2000);
     }
     // On new best: re-evaluate the current file to pick up new epochs from disk
     if (msg.data.action === 'new_best' && monitorState.file) {
@@ -694,16 +695,26 @@ async function loadFthyptFiles(autoEval = true) {
   }
 }
 
+let _autoSelectPending = null;  // Guard against concurrent calls
 async function autoSelectMonitoredFile(targetFile, retries) {
-  /**Refresh file list, select the monitored file, and ALWAYS re-evaluate.
-   * Re-evaluation is critical because the file content grows as new epochs arrive.*/
+  /**Refresh file list, select the monitored file, and ALWAYS re-evaluate.*/
+  if (_autoSelectPending) { clearTimeout(_autoSelectPending); _autoSelectPending = null; }
+
   await loadFthyptFiles(false);
   const sel = document.getElementById('fthyptSelect');
-  if ([...sel.options].some(o => o.value === targetFile)) {
+  const options = [...sel.options].map(o => o.value).filter(v => v);
+  if (options.some(o => o === targetFile)) {
     sel.value = targetFile;
-    evaluateFile();  // Always re-evaluate — file content may have changed
+    evaluateFile();
+    console.log(`[monitor] Selected monitored file: ${targetFile}`);
   } else if (retries > 0) {
-    setTimeout(() => autoSelectMonitoredFile(targetFile, retries - 1), 3000);
+    console.log(`[monitor] File not in dropdown yet (${options.length} files), retry in 3s... (${retries} left) target: ${targetFile}`);
+    _autoSelectPending = setTimeout(() => {
+      _autoSelectPending = null;
+      autoSelectMonitoredFile(targetFile, retries - 1);
+    }, 3000);
+  } else {
+    console.warn(`[monitor] Failed to find monitored file in dropdown: ${targetFile}`, options);
   }
 }
 
@@ -1194,6 +1205,21 @@ function restoreMonitorState() {
   monitorState.lastAction = ms.last_action || monitorState.lastAction;
   if (ms.last_best) monitorState.lastBest = ms.last_best;
   if (ms.last_extracted) monitorState.lastExtracted = ms.last_extracted;
+
+  // Auto-sync dropdown: if monitor is watching a file but dropdown doesn't match, fix it
+  if (monitorState.file) {
+    const sel = document.getElementById('fthyptSelect');
+    if (sel && sel.value !== monitorState.file) {
+      // Check if file is already in dropdown
+      if ([...sel.options].some(o => o.value === monitorState.file)) {
+        sel.value = monitorState.file;
+        evaluateFile();
+      } else {
+        // File not in dropdown yet — refresh list then select
+        autoSelectMonitoredFile(monitorState.file, 2);
+      }
+    }
+  }
 }
 
 function refreshUI() {
