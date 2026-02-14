@@ -1,0 +1,100 @@
+# FreqTrade Manager Configuration
+# All paths are relative to freqtrade_directory unless absolute
+# Reload configs are relative to THIS manager's folder
+
+freqtrade:
+  directory: "C:\\repository\\freqtrade"
+  venv_path: ".venv312"                    # Relative to freqtrade directory
+
+# Multiple strategies supported - each with its own workflow
+strategies:
+  - name: "my_strategy_workflow"           # Display name / identifier in manager
+    strategy_name: "my_strategy_class"  # Actual --strategy parameter for freqtrade
+    enabled: true
+
+    # Decoupled configs — each freqtrade command uses its own config
+    # All paths relative to freqtrade.directory
+    trade_config: "user_data/strategies/my_strategy_path/config.json"
+    download_config: "user_data/strategies/my_strategy_path/config.json"
+    backtest_config: "user_data/strategies/my_strategy_path/config_hyper.json"
+    hyperopt_config: "user_data/strategies/my_strategy_path/config_hyper.json"
+
+    # Config for freqtrade-client reload (relative to THIS manager folder)
+    reload_client_config: "my_strategy_path_Futures_api_client.json"
+
+    # Trade restart mode: "hard" = stop+start, "graceful" = freqtrade-client reload_config
+    restart_mode: "graceful"
+
+    # Workflow steps — each can be enabled/disabled independently
+    download_data:
+      enabled: true
+      timeframes: ["3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "1d"]
+      days_back: 90
+      extra_args: ""
+
+    backtest:
+      enabled: true
+      timerange_start_days_ago: 30
+      timerange_end_days_ago: 0
+      extra_args: ""
+
+    hyperopt:
+      enabled: true
+      timerange_start_days_ago: 30
+      timerange_end_days_ago: 0
+      loss_function: "SharpeHyperOptLossDaily"
+      spaces: "sell"
+      epochs: 200
+      jobs: 5
+      min_trades: 10
+      timeframe_detail: "3m"
+      disable_param_export: true
+      extra_args: ""
+      timeout_minutes: 360
+
+    extract:
+      enabled: true                        # Enable/disable auto-extraction of best epoch
+      on_new_best: false                   # false=extract once after hyperopt, true=live on each best
+      
+    restart:
+      enabled: true                        # Enable/disable trade restart/reload after workflow
+
+    # Schedule for this strategy's workflow
+    schedule:
+      enabled: true
+      cron: "0 2 * * *"
+      interval_hours: 0.5  # 30 minutes
+      cleanup_days: 2                       # 0 to disable, deletes hyperopted files older than
+
+    # Epoch selection criteria - evaluated IN ORDER (filter chain)
+    epoch_criteria:
+      - field: "max_drawdown"
+        operator: "<"
+        value: 2.0
+        sort: "asc"
+      - field: "profit_total_pct"
+        operator: ">"
+        value: 0
+        sort: "desc"
+
+    trade_extra_args: ""
+
+# Web interface
+web:
+  host: "0.0.0.0"
+  port: 42000
+
+# Logging
+logging:
+  level: "INFO"
+  file: "freqtrade_manager.log"
+  max_bytes: 10485760
+  backup_count: 5
+
+# Hyperopt monitoring
+monitoring:
+  poll_interval: 3
+  max_errors: 10
+
+# Process stats collection interval (seconds)
+process_stats_interval: 2
