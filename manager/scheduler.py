@@ -128,7 +128,7 @@ class WorkflowScheduler:
         self._job_ids.append(job_id)
         self.state.add_log(f"[scheduler] {strat_name}: cron {cron_expr}")
 
-    def _schedule_interval(self, strat_name: str, hours: int, from_time: datetime | None = None):
+    def _schedule_interval(self, strat_name: str, hours: float, from_time: datetime | None = None):
         """Schedule a one-shot run at from_time + hours. After completion, reschedules itself."""
         job_id = f"workflow-{strat_name}"
         base = from_time or datetime.now(timezone.utc)
@@ -148,7 +148,7 @@ class WorkflowScheduler:
         local_str = run_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
         self.state.add_log(f"[scheduler] {strat_name}: every {hours}h → next at {local_str}")
 
-    def _run_interval_workflow(self, strategy_name: str, interval_hours: int):
+    def _run_interval_workflow(self, strategy_name: str, interval_hours: float):
         """Run workflow. Rescheduling is handled by _on_workflow_completed callback."""
         self._run_workflow_by_name(strategy_name)
 
