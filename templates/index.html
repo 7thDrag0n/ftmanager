@@ -1188,7 +1188,7 @@ async function loadSchedule() {
   let html = '';
   const s = (data.schedules || []).find(x => x.strategy === strat);
   if (s && s.enabled) {
-    html += `<strong>Schedule:</strong> ${s.interval_hours > 0 ? `Wait ${s.interval_hours}h after completion, then repeat` : `Cron: ${s.cron}`}<br>`;
+    html += `<strong>Schedule:</strong> ${s.interval_hours > 0 ? `Wait ${s.interval_hours % 1 === 0 ? s.interval_hours + 'h' : (s.interval_hours * 60) + 'min'} after completion, then repeat` : `Cron: ${s.cron}`}<br>`;
   } else {
     html += 'Schedule disabled for this strategy<br>';
   }
