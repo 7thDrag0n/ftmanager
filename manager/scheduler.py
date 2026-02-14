@@ -181,10 +181,14 @@ class WorkflowScheduler:
         """Get info about scheduled jobs."""
         jobs = []
         for job in self.scheduler.get_jobs():
+            next_run = None
+            if job.next_run_time:
+                # Convert to local time for display
+                next_run = job.next_run_time.astimezone().strftime("%Y-%m-%d %H:%M:%S")
             jobs.append({
                 "id": job.id,
                 "name": job.name,
-                "next_run": str(job.next_run_time) if job.next_run_time else None,
+                "next_run": next_run,
                 "trigger": str(job.trigger),
             })
         return jobs
