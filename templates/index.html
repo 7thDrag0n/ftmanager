@@ -174,7 +174,7 @@ header h1 span { color: var(--accent); }
     <div class="card">
       <h2>Hyperopt Results</h2>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
-        <select id="fthyptSelect" onchange="evaluateFile()" style="flex:1;background:#fff;color:#111;border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:12px;font-family:monospace">
+        <select id="fthyptSelect" onchange="onFileDropdownChange()" style="flex:1;background:#fff;color:#111;border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:12px;font-family:monospace">
           <option value="">— select file —</option>
         </select>
         <button class="btn btn-outline btn-sm" onclick="loadFthyptFiles()" title="Refresh file list">🔄</button>
@@ -329,6 +329,7 @@ async function init() {
 function selectStrat(name) {
   strat = name;
   monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
+  userOverrodeDropdown = false;
   allEpochs = [];
   epochSortCol = null; epochSortDir = null; tableFiltersActive = false;
   document.querySelectorAll('.strat-tab').forEach(t =>
@@ -473,10 +474,11 @@ function handleEvent(msg) {
       if (sel.value === monitorState.file) {
         // File already selected — just re-evaluate to get updated best
         evaluateFile();
-      } else {
-        // Not selected yet — select it with retry
+      } else if (!userOverrodeDropdown) {
+        // User hasn't manually picked a different file — auto-select monitored file
         autoSelectMonitoredFile(monitorState.file, 3);
       }
+      // If user overrode dropdown, don't force-switch — they chose to look at another file
     }
     // When extract/reload happens, re-evaluate to update best card
     if (msg.data.action === 'extracted' || msg.data.action === 'reloaded') {
@@ -487,8 +489,10 @@ function handleEvent(msg) {
 
   if (msg.type === 'process_stats' && msg.data.key) {
     const key = msg.data.key;
-    if (state.processes && state.processes[key]) {
-      state.processes[key].stats = msg.data.stats;
+    const proc = state.processes?.[key];
+    // Only accept stats for active processes (avoid ghost updates)
+    if (proc && (proc.status === 'running' || proc.status === 'starting')) {
+      proc.stats = msg.data.stats;
       updateProcMiniStats(key);
       if (expandedProcs.has(key)) updateProcDetails(key);
     }
@@ -501,6 +505,7 @@ function handleEvent(msg) {
       const s = (msg.data.step || '').toLowerCase();
       if (s.startsWith('downloading') || s.startsWith('running backtest') || s.startsWith('stopping trade') || s.startsWith('running hyperopt') || s.startsWith('starting workflow')) {
         monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
+        userOverrodeDropdown = false;
         allEpochs = [];
         currentEpochFile = '';
         renderEpochView();
@@ -509,6 +514,7 @@ function handleEvent(msg) {
     }
     if (msg.type === 'workflow_started' && msg.data?.strategy === strat) {
       monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
+      userOverrodeDropdown = false;
     }
     // Refresh schedule info when workflow ends (next_run changes for interval mode)
     if (msg.type === 'workflow_completed' || msg.type === 'workflow_failed') {
@@ -703,6 +709,9 @@ async function autoSelectMonitoredFile(targetFile, retries) {
   /**Refresh file list, select the monitored file, and ALWAYS re-evaluate.*/
   if (_autoSelectPending) { clearTimeout(_autoSelectPending); _autoSelectPending = null; }
 
+  // This is an event-driven auto-select — clear any manual override
+  userOverrodeDropdown = false;
+
   await loadFthyptFiles(false);
   const sel = document.getElementById('fthyptSelect');
   const options = [...sel.options].map(o => o.value).filter(v => v);
@@ -719,6 +728,15 @@ async function autoSelectMonitoredFile(targetFile, retries) {
   } else {
     console.warn(`[monitor] Failed to find monitored file in dropdown: ${targetFile}`, options);
   }
+}
+
+function onFileDropdownChange() {
+  // User manually changed the dropdown — mark override so 10s refresh won't revert it
+  const sel = document.getElementById('fthyptSelect').value;
+  if (monitorState.file && sel !== monitorState.file) {
+    userOverrodeDropdown = true;
+  }
+  evaluateFile();
 }
 
 async function evaluateFile() {
@@ -785,6 +803,7 @@ function manualExtract() {
 
 // ── Workflow ──
 let monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
+let userOverrodeDropdown = false;  // True when user manually picked a different file in dropdown
 
 function renderWorkflow() {
   const wfData = state.workflows?.[strat];
@@ -1207,6 +1226,7 @@ function restoreMonitorState() {
     const wfStatus = state.workflows?.[strat]?.status;
     if (wfStatus === 'running' && (monitorState.file || monitorState.lastBest)) {
       monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
+      userOverrodeDropdown = false;
     }
     return;
   }
@@ -1219,7 +1239,8 @@ function restoreMonitorState() {
   monitorState.lastExtracted = ms.last_extracted || null;
 
   // Auto-sync dropdown: if monitor is watching a file but dropdown doesn't match, fix it
-  if (monitorState.file) {
+  // BUT respect manual user selection — don't override if user picked a different file
+  if (monitorState.file && !userOverrodeDropdown) {
     const sel = document.getElementById('fthyptSelect');
     if (sel && sel.value !== monitorState.file) {
       // Check if file is already in dropdown
