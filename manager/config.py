@@ -63,7 +63,7 @@ class RestartConfig:
 class ScheduleConfig:
     enabled: bool = True
     cron: str = "0 2 * * *"
-    interval_hours: int = 0
+    interval_hours: float = 0
     cleanup_days: int = 2  # Delete fthypt files older than N days on workflow start (0=disabled)
 
 

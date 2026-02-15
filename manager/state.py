@@ -188,10 +188,14 @@ class AppState:
         with self._lock:
             key = self._proc_key(ptype, strategy)
             if key in self.processes:
-                self.processes[key].stats = stats
+                proc = self.processes[key]
+                # Only accept stats for active processes (avoid ghost updates after stop)
+                if proc.status not in (ProcessStatus.RUNNING, ProcessStatus.STARTING):
+                    return
+                proc.stats = stats
                 # Preserve last non-zero stats for post-completion display
                 if stats.cpu_percent > 0 or stats.memory_mb > 0:
-                    self.processes[key].peak_stats = ProcessStats(
+                    proc.peak_stats = ProcessStats(
                         cpu_percent=stats.cpu_percent,
                         memory_mb=stats.memory_mb,
                         num_threads=stats.num_threads,

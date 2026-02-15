@@ -314,6 +314,10 @@ class ProcessManager:
                         self.state.set_process(ptype, strategy.name, info_now)
                     if key in self._procs:
                         del self._procs[key]
+                    # Signal stats collector to stop BEFORE removing the event
+                    evt = self._stop_events.get(key)
+                    if evt:
+                        evt.set()
                     if key in self._stop_events:
                         del self._stop_events[key]
 
@@ -576,54 +580,64 @@ class ProcessManager:
         def _collect():
             try:
                 p = psutil.Process(pid)
+                # Record create_time to detect PID reuse after process dies
+                p_create_time = p.create_time()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                return
+
+            # Prime the first cpu_percent call (always returns 0 on first call)
+            try:
+                p.cpu_percent(interval=None)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 return
 
             while not stop_event.is_set():
                 try:
-                    # Collect all pids (parent + children)
-                    procs = [p]
-                    try:
-                        procs.extend(p.children(recursive=True))
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-
-                    # Snapshot 1
-                    for proc in procs:
-                        try:
-                            proc.cpu_percent(interval=None)
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            pass
+                    # Check our process is still the same (PID reuse protection)
+                    if not p.is_running() or p.create_time() != p_create_time:
+                        break
 
                     # Wait measurement interval
                     stop_event.wait(timeout=interval)
                     if stop_event.is_set():
                         break
 
-                    # Snapshot 2 — now cpu_percent returns real values
+                    # Verify again after wait (process may have died during sleep)
+                    if not p.is_running() or p.create_time() != p_create_time:
+                        break
+
+                    # Collect stats from parent + all current children in one pass
                     cpu = 0.0
                     mem = 0.0
-                    threads = 0
-                    for proc in procs:
+                    nthreads = 0
+                    all_pids = set()
+
+                    for proc in [p] + (p.children(recursive=True) if p.is_running() else []):
                         try:
-                            cpu += proc.cpu_percent(interval=None)
-                            mem += proc.memory_info().rss / (1024 * 1024)
-                            threads += proc.num_threads()
+                            # Verify child also belongs to our process tree
+                            if proc.pid != pid and proc.create_time() < p_create_time:
+                                continue
+                            c = proc.cpu_percent(interval=None)
+                            m = proc.memory_info().rss / (1024 * 1024)
+                            t = proc.num_threads()
+                            cpu += c
+                            mem += m
+                            nthreads += t
+                            all_pids.add(proc.pid)
                         except (psutil.NoSuchProcess, psutil.AccessDenied):
                             pass
 
                     stats = ProcessStats(
                         cpu_percent=round(cpu, 1),
                         memory_mb=round(mem, 1),
-                        num_threads=threads,
+                        num_threads=nthreads,
                         updated_at=time.time(),
                     )
 
-                    # GPU stats: check if any of our PIDs are on a GPU
-                    if HAS_NVML:
+                    # GPU stats
+                    if HAS_NVML and all_pids:
                         try:
-                            our_pids = {proc.pid for proc in procs}
-                            gpu_stats = _collect_gpu_for_pids(our_pids)
+                            gpu_stats = _collect_gpu_for_pids(all_pids)
                             if gpu_stats:
                                 stats.gpu_util = gpu_stats["util"]
                                 stats.gpu_mem_mb = gpu_stats["mem_mb"]
@@ -643,8 +657,6 @@ class ProcessManager:
                 except Exception as e:
                     logger.debug(f"Stats error for {key}: {e}")
                     stop_event.wait(timeout=interval)
-
-            # Process ended — peak_stats already tracked in state.update_stats()
 
         t = threading.Thread(target=_collect, name=f"stats-{key}", daemon=True)
         self._stats_threads[key] = t
