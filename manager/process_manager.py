@@ -585,37 +585,45 @@ class ProcessManager:
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 return
 
-            # Prime the first cpu_percent call (always returns 0 on first call)
-            try:
-                p.cpu_percent(interval=None)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                return
-
             while not stop_event.is_set():
                 try:
                     # Check our process is still the same (PID reuse protection)
                     if not p.is_running() or p.create_time() != p_create_time:
                         break
 
+                    # Collect all pids (parent + children)
+                    procs = [p]
+                    try:
+                        procs.extend(p.children(recursive=True))
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
+                    # Snapshot 1: prime cpu_percent for all current processes
+                    for proc in procs:
+                        try:
+                            proc.cpu_percent(interval=None)
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+
                     # Wait measurement interval
                     stop_event.wait(timeout=interval)
                     if stop_event.is_set():
                         break
 
-                    # Verify again after wait (process may have died during sleep)
+                    # Verify parent still alive after wait
                     if not p.is_running() or p.create_time() != p_create_time:
                         break
 
-                    # Collect stats from parent + all current children in one pass
+                    # Snapshot 2: read real cpu_percent values
+                    # Re-fetch children in case some died during wait
                     cpu = 0.0
                     mem = 0.0
                     nthreads = 0
                     all_pids = set()
 
-                    for proc in [p] + (p.children(recursive=True) if p.is_running() else []):
+                    for proc in procs:
                         try:
-                            # Verify child also belongs to our process tree
-                            if proc.pid != pid and proc.create_time() < p_create_time:
+                            if not proc.is_running():
                                 continue
                             c = proc.cpu_percent(interval=None)
                             m = proc.memory_info().rss / (1024 * 1024)
