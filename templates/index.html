@@ -330,6 +330,7 @@ function selectStrat(name) {
   strat = name;
   monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
   userOverrodeDropdown = false;
+  stopResultsSyncChecker();
   allEpochs = [];
   epochSortCol = null; epochSortDir = null; tableFiltersActive = false;
   document.querySelectorAll('.strat-tab').forEach(t =>
@@ -478,7 +479,10 @@ function handleEvent(msg) {
         // User hasn't manually picked a different file — auto-select monitored file
         autoSelectMonitoredFile(monitorState.file, 3);
       }
-      // If user overrode dropdown, don't force-switch — they chose to look at another file
+      // Start sync checker: verify HYPEROPT RESULTS catches up with monitor
+      if (!userOverrodeDropdown) {
+        startResultsSyncChecker();
+      }
     }
     // When extract/reload happens, re-evaluate to update best card
     if (msg.data.action === 'extracted' || msg.data.action === 'reloaded') {
@@ -506,6 +510,7 @@ function handleEvent(msg) {
       if (s.startsWith('downloading') || s.startsWith('running backtest') || s.startsWith('stopping trade') || s.startsWith('running hyperopt') || s.startsWith('starting workflow')) {
         monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
         userOverrodeDropdown = false;
+        stopResultsSyncChecker();
         allEpochs = [];
         currentEpochFile = '';
         renderEpochView();
@@ -683,6 +688,61 @@ function updateProcDetails(key) {
 
 // ── Hyperopt File Selector ──
 let evalBestEpoch = null;
+let _syncCheckInterval = null;
+
+function startResultsSyncChecker() {
+  /**After new_best, periodically verify HYPEROPT RESULTS matches WORKFLOW monitor.
+   * If the dropdown file or best epoch doesn't match, force a refresh.
+   * Stops when synced or after ~2min (6 × 20s). */
+  stopResultsSyncChecker();
+  let attempts = 0;
+  const maxAttempts = 6;
+
+  _syncCheckInterval = setInterval(async () => {
+    attempts++;
+    const best = monitorState.lastBest;
+    const sel = document.getElementById('fthyptSelect');
+
+    if (!best || !monitorState.file || userOverrodeDropdown) {
+      stopResultsSyncChecker();
+      return;
+    }
+
+    const fileMatches = sel.value === monitorState.file;
+    const epochMatches = evalBestEpoch === best.epoch;
+
+    if (fileMatches && epochMatches) {
+      console.log(`[sync] HYPEROPT RESULTS matches monitor (epoch #${best.epoch}) — stopping checker`);
+      stopResultsSyncChecker();
+      return;
+    }
+
+    console.log(`[sync] Mismatch attempt ${attempts}/${maxAttempts}: ` +
+      `dropdown="${sel.value}" vs monitor="${monitorState.file}", ` +
+      `evalBest=${evalBestEpoch} vs monitorBest=${best.epoch}`);
+
+    // Force refresh: reload file list then evaluate
+    if (!fileMatches) {
+      await loadFthyptFiles(false);
+      if ([...sel.options].some(o => o.value === monitorState.file)) {
+        sel.value = monitorState.file;
+      }
+    }
+    await evaluateFile();
+
+    if (attempts >= maxAttempts) {
+      console.warn(`[sync] Max attempts reached — stopping checker`);
+      stopResultsSyncChecker();
+    }
+  }, 20000);
+}
+
+function stopResultsSyncChecker() {
+  if (_syncCheckInterval) {
+    clearInterval(_syncCheckInterval);
+    _syncCheckInterval = null;
+  }
+}
 
 async function loadFthyptFiles(autoEval = true) {
   const data = await api(`hyperopt/files/${strat}?_t=${Date.now()}`);
@@ -735,6 +795,7 @@ function onFileDropdownChange() {
   const sel = document.getElementById('fthyptSelect').value;
   if (monitorState.file && sel !== monitorState.file) {
     userOverrodeDropdown = true;
+    stopResultsSyncChecker();
   }
   evaluateFile();
 }
