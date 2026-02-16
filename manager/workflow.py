@@ -6,6 +6,7 @@ Each step respects its own enabled flag in config.
 
 import os
 import glob
+import json
 import threading
 import time
 import logging
@@ -33,11 +34,13 @@ class Workflow:
         state: AppState,
         proc_mgr: ProcessManager,
         hyperopt_mon: HyperoptMonitor,
+        config_path: str = "",
     ):
         self.config = config
         self.state = state
         self.proc_mgr = proc_mgr
         self.hyperopt_mon = hyperopt_mon
+        self._config_path = config_path
         self._running: dict[str, threading.Thread] = {}
         self._cancel_events: dict[str, threading.Event] = {}
         self._on_complete_callbacks: list[Callable] = []  # Called with (strategy_name) on any finish
@@ -337,27 +340,85 @@ class Workflow:
         if rc != 0 and rc != -1:
             logger.warning(f"Hyperopt ended with code {rc}")
 
-        # Deferred mode: extract+reload the final best ONCE after hyperopt finishes
-        if not live_mode and best_found[0] and strategy.extract.enabled:
-            epoch = best_found[0]
+        # ── DEFINITIVE EVALUATION ──────────────────────────────────────
+        # Parse the FULL fthypt file and evaluate ALL epochs against criteria.
+        # This is the SAME code path as the HYPEROPT RESULTS panel API endpoint.
+        # During live monitoring, the incremental evaluator may have extracted a
+        # suboptimal epoch (e.g. #7 was best among epochs 1-7, but #3 is the true
+        # best across all 18 epochs). This final pass corrects that.
+        from .hyperopt_monitor import parse_fthypt_file, evaluate_criteria
 
-            # Skip extract/reload if profit is not positive
-            if epoch.profit_total_pct <= 0:
-                self.state.add_log(
-                    f"[workflow:{strategy.name}] Skipping extract — best epoch profit "
-                    f"{epoch.profit_total_pct:.2f}% <= 0"
-                )
+        # Reload criteria from config (same as HYPEROPT RESULTS API does)
+        from .config import load_config
+        try:
+            fresh_cfg = load_config(self._config_path)
+            fresh_strat = fresh_cfg.get_strategy(strategy.name)
+            criteria = fresh_strat.epoch_criteria if fresh_strat else strategy.epoch_criteria
+        except Exception:
+            criteria = strategy.epoch_criteria
+
+        base_dir = os.path.join(self.config.freqtrade_dir, "user_data", "hyperopt_results")
+        lr_path = os.path.join(base_dir, ".last_result.json")
+        final_best = None
+        try:
+            with open(lr_path, "r", encoding="utf-8") as f:
+                lr_data = json.loads(f.read())
+            fthypt_name = lr_data.get("latest_hyperopt", "")
+            if fthypt_name:
+                fthypt_path = os.path.join(base_dir, fthypt_name)
+                all_epochs = parse_fthypt_file(fthypt_path)
+                final_best = evaluate_criteria(all_epochs, criteria)
+                if final_best:
+                    self.state.add_log(
+                        f"[workflow:{strategy.name}] Final evaluation ({len(all_epochs)} epochs): "
+                        f"best = epoch {final_best.epoch} "
+                        f"(profit={final_best.profit_total_pct:.2f}%, dd={final_best.max_drawdown:.2f}%)"
+                    )
+                    self.state.set_best_epoch(strategy.name, final_best)
+                    self.state.broadcast("hyperopt_monitor_status", {
+                        "strategy": strategy.name,
+                        "action": "new_best",
+                        "epoch": final_best.to_dict(),
+                    })
+                else:
+                    self.state.add_log(
+                        f"[workflow:{strategy.name}] Final evaluation ({len(all_epochs)} epochs): "
+                        f"no epoch matched criteria"
+                    )
+        except Exception as e:
+            self.state.add_log(f"[workflow:{strategy.name}] Final evaluation error: {e}")
+            logger.error(f"Final fthypt evaluation error: {e}")
+
+        # ── EXTRACT + RELOAD (if needed) ───────────────────────────────
+        # Use final_best as the definitive result for extraction.
+        # In live mode: re-extract only if final best differs from what was already extracted.
+        # In deferred mode: extract the final best (nothing was extracted during hyperopt).
+        if final_best and strategy.extract.enabled:
+            need_extract = False
+
+            if live_mode:
+                if last_extracted_epoch[0] != final_best.epoch:
+                    self.state.add_log(
+                        f"[workflow:{strategy.name}] Final best (epoch {final_best.epoch}) differs from "
+                        f"last extracted (epoch {last_extracted_epoch[0]}) — correcting"
+                    )
+                    need_extract = True
+                # else: already extracted the correct epoch during live monitoring
             else:
+                # Deferred mode: nothing extracted yet
+                need_extract = True
+
+            if need_extract and final_best.profit_total_pct > 0:
                 self.state.add_log(
-                    f"[workflow:{strategy.name}] Hyperopt done. Extracting best: epoch {epoch.epoch} "
-                    f"(profit={epoch.profit_total_pct:.2f}%, dd={epoch.max_drawdown:.2f}%)"
+                    f"[workflow:{strategy.name}] Extracting best: epoch {final_best.epoch} "
+                    f"(profit={final_best.profit_total_pct:.2f}%, dd={final_best.max_drawdown:.2f}%)"
                 )
-                success = self._extract_epoch(strategy, epoch.epoch)
+                success = self._extract_epoch(strategy, final_best.epoch)
                 if success:
                     self.state.broadcast("hyperopt_monitor_status", {
                         "strategy": strategy.name,
                         "action": "extracted",
-                        "epoch": epoch.to_dict(),
+                        "epoch": final_best.to_dict(),
                     })
                     if strategy.restart.enabled:
                         self.state.add_log(f"[workflow:{strategy.name}] Reloading trade with best epoch...")
@@ -365,17 +426,22 @@ class Workflow:
                         self.state.broadcast("hyperopt_monitor_status", {
                             "strategy": strategy.name,
                             "action": "reloaded",
-                            "epoch": epoch.to_dict(),
+                            "epoch": final_best.to_dict(),
                         })
                 else:
-                    self.state.add_log(f"[workflow:{strategy.name}] Post-hyperopt extract failed for epoch {epoch.epoch}")
+                    self.state.add_log(f"[workflow:{strategy.name}] Extract failed for epoch {final_best.epoch}")
                     self.state.broadcast("hyperopt_monitor_status", {
                         "strategy": strategy.name,
                         "action": "extract_failed",
-                        "epoch": epoch.to_dict(),
+                        "epoch": final_best.to_dict(),
                     })
+            elif need_extract and final_best.profit_total_pct <= 0:
+                self.state.add_log(
+                    f"[workflow:{strategy.name}] Skipping extract — best epoch profit "
+                    f"{final_best.profit_total_pct:.2f}% <= 0"
+                )
 
-        return best_found[0]
+        return final_best
 
     def _reload_trade(self, strategy: StrategyConfig, restart_mode: str,
                        cancel_event: threading.Event):

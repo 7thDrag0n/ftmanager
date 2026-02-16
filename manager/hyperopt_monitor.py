@@ -190,6 +190,12 @@ def evaluate_criteria(epochs: list[EpochResult], criteria: list[EpochCriterion])
             f"profit={best.profit_total_pct:.2f}% dd={best.max_drawdown:.2f}% "
             f"trades={best.trades} obj={best.objective:.5f}"
         )
+        if len(candidates) > 1:
+            runner_up = candidates[1]
+            logger.debug(
+                f"  runner-up: epoch #{runner_up.epoch} "
+                f"profit={runner_up.profit_total_pct:.2f}% dd={runner_up.max_drawdown:.2f}%"
+            )
     return candidates[0] if candidates else None
 
 
