@@ -522,8 +522,21 @@ function handleEvent(msg) {
       userOverrodeDropdown = false;
     }
     // Refresh schedule info when workflow ends (next_run changes for interval mode)
-    if (msg.type === 'workflow_completed' || msg.type === 'workflow_failed') {
-      setTimeout(() => loadSchedule(), 2000);  // slight delay for scheduler to reschedule
+    // Also force HYPEROPT RESULTS refresh — Chrome may have throttled updates during background
+    if ((msg.type === 'workflow_completed' || msg.type === 'workflow_failed') && msg.data?.strategy === strat) {
+      setTimeout(() => loadSchedule(), 2000);
+      // Force full HYPEROPT RESULTS refresh: reload file list, auto-select monitored file, re-evaluate
+      setTimeout(async () => {
+        await loadFthyptFiles(false);
+        const sel = document.getElementById('fthyptSelect');
+        if (monitorState.file && !userOverrodeDropdown) {
+          if ([...sel.options].some(o => o.value === monitorState.file)) {
+            sel.value = monitorState.file;
+          }
+        }
+        await evaluateFile();
+        console.log('[workflow_completed] Forced HYPEROPT RESULTS refresh');
+      }, 3000);
     }
     api('state').then(s => { if(s) { state = s; refreshUI(); }});
   }
@@ -1348,6 +1361,26 @@ setInterval(async () => {
   const s = await api('state');
   if (s) { state = s; restoreMonitorState(); refreshUI(); }
 }, 10000);
+
+// Chrome throttles background tabs (timers → 1min+, fetches delayed).
+// When tab becomes visible again, force a FULL refresh including HYPEROPT RESULTS.
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    console.log('[visibility] Tab active — forcing full refresh');
+    const s = await api('state');
+    if (s) { state = s; restoreMonitorState(); refreshUI(); }
+    loadSchedule();
+    // Refresh HYPEROPT RESULTS: file list + evaluate
+    await loadFthyptFiles(false);
+    const sel = document.getElementById('fthyptSelect');
+    if (monitorState.file && !userOverrodeDropdown) {
+      if ([...sel.options].some(o => o.value === monitorState.file)) {
+        sel.value = monitorState.file;
+      }
+    }
+    if (sel.value) evaluateFile();
+  }
+});
 
 init();
 </script>
