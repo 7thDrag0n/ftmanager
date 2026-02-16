@@ -124,7 +124,7 @@ def main():
 
     proc_mgr = ProcessManager(config, state)
     hyperopt_mon = HyperoptMonitor(config, state)
-    wf = Workflow(config, state, proc_mgr, hyperopt_mon)
+    wf = Workflow(config, state, proc_mgr, hyperopt_mon, config_path)
     sched = WorkflowScheduler(config, state, wf, proc_mgr, config_path)
 
     # Create FastAPI app
