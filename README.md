@@ -117,11 +117,11 @@ Live process stdout/stderr. Switch between trade, hyperopt, backtest, download o
 
 ## Automated Workflow Sequence
 
-When triggered (manually or by schedule):
+When triggered (manually or by schedule - enabled or disabled workflow steps):
 
 1. **Stop active trade** (graceful shutdown with 60s timeout)
 2. **Download data** — updates pair data for all configured timeframes
-3. **Run backtest** — triggers LSTM model retraining via the strategy's backtest path
+3. **Run backtest** — triggers for example a ML model retraining via the strategy's backtest path
 4. **Delete old hyperopt results** — ensures clean `.fthypt` file for monitoring
 5. **Run hyperopt** — with real-time epoch monitoring via `.fthypt` file
 6. **Evaluate epochs** — apply criteria chain to find the best epoch
