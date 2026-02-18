@@ -17,7 +17,7 @@ A web-based management system for FreqTrade that automates the daily optimizatio
 
 ## Requirements
 
-- Windows 10+
+- Linux or Windows 10+
 - dedicated venv with Python 3.10+
 - FreqTrade better be installed separetely via git clone + pip, having a different venv
 
