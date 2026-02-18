@@ -1,12 +1,16 @@
-"""Process manager for FreqTrade subprocesses on Windows."""
+"""Process manager for FreqTrade subprocesses (Windows + Linux)."""
 
 import os
+import sys
+import signal
 import subprocess
 import threading
 import time
 import logging
 from datetime import datetime, timedelta
 from typing import Callable
+
+IS_WINDOWS = sys.platform == "win32"
 
 try:
     import psutil
@@ -26,7 +30,11 @@ from .state import AppState, ProcessInfo, ProcessStats, ProcessType, ProcessStat
 
 logger = logging.getLogger(__name__)
 
-CREATE_NEW_PROCESS_GROUP = 0x00000200
+# Windows-only constant for subprocess creation
+if IS_WINDOWS:
+    CREATE_NEW_PROCESS_GROUP = 0x00000200
+else:
+    CREATE_NEW_PROCESS_GROUP = 0
 
 
 def calc_timerange(start_days_ago: int, end_days_ago: int) -> str:
@@ -179,10 +187,7 @@ class ProcessManager:
     def build_reload_cmd(self, strategy: StrategyConfig) -> list[str]:
         """Build freqtrade-client reload_config command.
         Config is relative to the manager folder."""
-        # freqtrade-client should be in the same venv
-        client_exe = os.path.join(
-            self.config.freqtrade_dir, self.config.venv_path, "Scripts", "freqtrade-client.exe"
-        )
+        client_exe = self.config.freqtrade_client_exe
         cfg = os.path.join(self.config.manager_dir, strategy.reload_client_config)
         return [client_exe, "--config", cfg, "reload_config"]
 
@@ -239,15 +244,20 @@ class ProcessManager:
         cwd = self.config.manager_dir if ptype == ProcessType.RELOAD else self.config.freqtrade_dir
 
         try:
-            proc = subprocess.Popen(
-                cmd,
+            popen_kwargs = dict(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=cwd,
                 text=True,
                 bufsize=1,
-                creationflags=CREATE_NEW_PROCESS_GROUP,
             )
+            if IS_WINDOWS:
+                popen_kwargs["creationflags"] = CREATE_NEW_PROCESS_GROUP
+            else:
+                # On Linux, create a new process group so we can kill the whole tree
+                popen_kwargs["start_new_session"] = True
+
+            proc = subprocess.Popen(cmd, **popen_kwargs)
         except Exception as e:
             logger.error(f"Failed to start {key}: {e}")
             info.status = ProcessStatus.FAILED
@@ -341,10 +351,13 @@ class ProcessManager:
 
         Strategy:
         1. Signal stop_event (stops our reader thread)
-        2. Try graceful kill via taskkill /T (process tree, no /F) — 5s
-        3. Force kill entire process tree via psutil (recursive children)
-        4. Fallback to taskkill /F /T if psutil unavailable
-        5. Verify all dead
+        2. Try graceful termination via psutil process tree (SIGTERM) — 5s
+           On Windows without psutil: taskkill /T
+           On Linux without psutil: os.killpg (SIGTERM to process group)
+        3. Force kill entire process tree via psutil (SIGKILL)
+           On Windows without psutil: taskkill /F /T
+           On Linux without psutil: os.killpg (SIGKILL to process group)
+        4. Verify all dead
         """
         key = self._proc_key(ptype, strategy_name)
 
@@ -373,7 +386,7 @@ class ProcessManager:
                 try:
                     parent = psutil.Process(pid)
                     children = parent.children(recursive=True)
-                    parent.terminate()  # SIGTERM equivalent
+                    parent.terminate()  # SIGTERM on both platforms
                     for child in children:
                         try:
                             child.terminate()
@@ -383,9 +396,15 @@ class ProcessManager:
                     logger.info(f"Process {key} already exited")
                     self._cleanup_after_stop(proc, key, ptype, strategy_name)
                     return True
-            else:
+            elif IS_WINDOWS:
                 subprocess.run(["taskkill", "/PID", str(pid), "/T"],
                                capture_output=True, timeout=5)
+            else:
+                # Linux: send SIGTERM to the process group
+                try:
+                    os.killpg(os.getpgid(pid), signal.SIGTERM)
+                except (ProcessLookupError, PermissionError):
+                    pass
         except Exception as e:
             logger.debug(f"Graceful terminate for {key}: {e}")
 
@@ -403,12 +422,18 @@ class ProcessManager:
         killed = self._force_kill_tree(pid)
 
         if not killed:
-            # Fallback: taskkill /F /T
-            try:
-                subprocess.run(["taskkill", "/F", "/PID", str(pid), "/T"],
-                               capture_output=True, timeout=10)
-            except Exception as e:
-                logger.error(f"taskkill /F failed for {key}: {e}")
+            if IS_WINDOWS:
+                try:
+                    subprocess.run(["taskkill", "/F", "/PID", str(pid), "/T"],
+                                   capture_output=True, timeout=10)
+                except Exception as e:
+                    logger.error(f"taskkill /F failed for {key}: {e}")
+            else:
+                # Linux: send SIGKILL to the process group
+                try:
+                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError) as e:
+                    logger.debug(f"killpg SIGKILL for {key}: {e}")
             # Last resort
             try:
                 proc.kill()
@@ -436,7 +461,7 @@ class ProcessManager:
             # Kill children first (bottom-up), then parent
             for child in reversed(children):
                 try:
-                    child.kill()  # SIGKILL equivalent on Windows
+                    child.kill()  # SIGKILL on Linux, TerminateProcess on Windows
                     logger.debug(f"  Killed child PID {child.pid} ({child.name()})")
                 except psutil.NoSuchProcess:
                     pass
@@ -465,12 +490,13 @@ class ProcessManager:
             return False
 
     def _kill_orphan_children(self, parent_pid: int):
-        """After parent exits, sweep for any orphaned children that might have survived."""
+        """After parent exits, sweep for any orphaned children that might have survived.
+        On Windows, children of a killed process may get reparented.
+        On Linux, orphaned children get reparented to PID 1 (init)."""
         if not HAS_PSUTIL:
             return
         try:
-            # On Windows, children of a killed process may get reparented
-            # Use psutil to find any processes whose ppid was our parent
+            # Find any processes whose ppid was our parent
             for proc in psutil.process_iter(['pid', 'ppid', 'name']):
                 try:
                     if proc.info['ppid'] == parent_pid:

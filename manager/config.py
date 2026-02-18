@@ -1,11 +1,14 @@
 """Configuration management for FreqTrade Manager."""
 
 import os
+import sys
 import yaml
 import logging
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+IS_WINDOWS = sys.platform == "win32"
 
 
 @dataclass
@@ -134,11 +137,21 @@ class AppConfig:
 
     @property
     def freqtrade_exe(self) -> str:
-        return os.path.join(self.freqtrade_dir, self.venv_path, "Scripts", "freqtrade.exe")
+        if IS_WINDOWS:
+            return os.path.join(self.freqtrade_dir, self.venv_path, "Scripts", "freqtrade.exe")
+        return os.path.join(self.freqtrade_dir, self.venv_path, "bin", "freqtrade")
 
     @property
     def python_exe(self) -> str:
-        return os.path.join(self.freqtrade_dir, self.venv_path, "Scripts", "python.exe")
+        if IS_WINDOWS:
+            return os.path.join(self.freqtrade_dir, self.venv_path, "Scripts", "python.exe")
+        return os.path.join(self.freqtrade_dir, self.venv_path, "bin", "python")
+
+    @property
+    def freqtrade_client_exe(self) -> str:
+        if IS_WINDOWS:
+            return os.path.join(self.freqtrade_dir, self.venv_path, "Scripts", "freqtrade-client.exe")
+        return os.path.join(self.freqtrade_dir, self.venv_path, "bin", "freqtrade-client")
 
     def get_strategy(self, name: str) -> StrategyConfig | None:
         for s in self.strategies:
