@@ -1,26 +1,35 @@
 # FreqTrade Manager Configuration
 # All paths are relative to freqtrade_directory unless absolute
 # Reload configs are relative to THIS manager's folder
+#
+# Platform notes:
+#   Windows paths use backslashes: "D:\\python\\freqtrade"
+#   Linux paths use forward slashes: "/home/user/freqtrade"
+#   Executable resolution is automatic (Scripts/*.exe vs bin/*)
 
 freqtrade:
-  directory: "C:\\repository\\freqtrade"
-  venv_path: ".venv312"                    # Relative to freqtrade directory
+  # Windows example:
+  directory: "D:\\python\\freqtrade"
+  venv_path: ".venv310"                    # Relative to freqtrade directory
+  # Linux example:
+  # directory: "/home/user/freqtrade"
+  # venv_path: ".venv"
 
 # Multiple strategies supported - each with its own workflow
 strategies:
-  - name: "my_strategy_workflow"           # Display name / identifier in manager
-    strategy_name: "my_strategy_class"  # Actual --strategy parameter for freqtrade
+  - name: "Predict_LSTM_Futures"           # Display name / identifier in manager
+    strategy_name: "Predict_LSTM_Futures"  # Actual --strategy parameter for freqtrade
     enabled: true
 
     # Decoupled configs — each freqtrade command uses its own config
     # All paths relative to freqtrade.directory
-    trade_config: "user_data/strategies/my_strategy_path/config.json"
-    download_config: "user_data/strategies/my_strategy_path/config.json"
-    backtest_config: "user_data/strategies/my_strategy_path/config_hyper.json"
-    hyperopt_config: "user_data/strategies/my_strategy_path/config_hyper.json"
+    trade_config: "user_data/strategies/Predict_LSTM/config.json"
+    download_config: "user_data/strategies/Predict_LSTM/config.json"
+    backtest_config: "user_data/strategies/Predict_LSTM/config_hyper.json"
+    hyperopt_config: "user_data/strategies/Predict_LSTM/config_hyper.json"
 
     # Config for freqtrade-client reload (relative to THIS manager folder)
-    reload_client_config: "my_strategy_path_Futures_api_client.json"
+    reload_client_config: "Predict_LSTM_Futures_api_client.json"
 
     # Trade restart mode: "hard" = stop+start, "graceful" = freqtrade-client reload_config
     restart_mode: "graceful"
@@ -37,6 +46,7 @@ strategies:
       timerange_start_days_ago: 30
       timerange_end_days_ago: 0
       extra_args: ""
+      delete_params_json: false          # Delete <strategy_name>.json before backtest
 
     hyperopt:
       enabled: true
@@ -51,11 +61,11 @@ strategies:
       disable_param_export: true
       extra_args: ""
       timeout_minutes: 360
+      delete_params_json: false          # Delete <strategy_name>.json before hyperopt
 
     extract:
       enabled: true                        # Enable/disable auto-extraction of best epoch
-      on_new_best: false                   # false=extract once after hyperopt, true=live on each best
-      
+
     restart:
       enabled: true                        # Enable/disable trade restart/reload after workflow
 
@@ -63,17 +73,15 @@ strategies:
     schedule:
       enabled: true
       cron: "0 2 * * *"
-      interval_hours: 0.5  # 30 minutes
-      cleanup_days: 2                       # 0 to disable, deletes hyperopted files older than
+      interval_hours: 0
 
     # Epoch selection criteria - evaluated IN ORDER (filter chain)
     epoch_criteria:
       - field: "max_drawdown"
-        operator: "<"
+        operator: "<="
         value: 2.0
-        sort: "asc"
       - field: "profit_total_pct"
-        operator: ">"
+        operator: ">="
         value: 0
         sort: "desc"
 
