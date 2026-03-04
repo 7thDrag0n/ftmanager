@@ -141,6 +141,8 @@ class Workflow:
 
             # Step 3: Backtest (updates LSTM models)
             if strategy.backtest.enabled:
+                if strategy.backtest.delete_params_json:
+                    self._delete_params_json(strategy, "backtest")
                 self._step(name, "Running backtest...")
                 self.state.add_log(f"[workflow:{name}] Running backtest (model update)")
                 rc = self.proc_mgr.run_and_wait(
@@ -157,6 +159,8 @@ class Workflow:
             # Step 4: Run hyperopt with live extract+reload on new best
             best_epoch = None
             if strategy.hyperopt.enabled:
+                if strategy.hyperopt.delete_params_json:
+                    self._delete_params_json(strategy, "hyperopt")
                 self._step(name, "Running hyperopt...")
                 best_epoch = self._run_hyperopt_with_monitoring(
                     strategy, cancel_event, restart_mode=restart_mode,
@@ -249,6 +253,23 @@ class Workflow:
             )
             # Tell frontend to refresh the file list
             self.state.broadcast("fthypt_files_changed", {"strategy": strategy.name})
+
+    def _delete_params_json(self, strategy: StrategyConfig, step_name: str):
+        """Delete the strategy's hyperopt params JSON file (e.g. Predict_LSTM_Futures.json).
+        Called before backtest or hyperopt when the corresponding delete_params_json flag is set."""
+        params_path = os.path.join(
+            self.config.freqtrade_dir, "user_data", "strategies",
+            f"{strategy.strategy_name}.json"
+        )
+        if os.path.isfile(params_path):
+            try:
+                os.remove(params_path)
+                fname = os.path.basename(params_path)
+                self.state.add_log(f"[workflow:{strategy.name}] Deleted {fname} before {step_name}")
+                logger.info(f"Deleted params JSON: {params_path}")
+            except Exception as e:
+                self.state.add_log(f"[workflow:{strategy.name}] Failed to delete params JSON: {e}")
+                logger.warning(f"Failed to delete {params_path}: {e}")
 
     def _run_hyperopt_with_monitoring(
         self, strategy: StrategyConfig, cancel_event: threading.Event,

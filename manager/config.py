@@ -33,6 +33,7 @@ class BacktestConfig:
     timerange_start_days_ago: int = 30
     timerange_end_days_ago: int = 0
     extra_args: str = ""
+    delete_params_json: bool = False  # Delete <strategy_name>.json before backtest
 
 
 @dataclass
@@ -49,6 +50,7 @@ class HyperoptConfig:
     disable_param_export: bool = True
     extra_args: str = ""
     timeout_minutes: int = 360
+    delete_params_json: bool = False  # Delete <strategy_name>.json before hyperopt
 
 
 @dataclass
@@ -233,6 +235,7 @@ def load_config(path: str) -> AppConfig:
                 timerange_start_days_ago=bt_raw.get("timerange_start_days_ago", 30),
                 timerange_end_days_ago=bt_raw.get("timerange_end_days_ago", 0),
                 extra_args=bt_raw.get("extra_args", ""),
+                delete_params_json=bt_raw.get("delete_params_json", False),
             ),
             hyperopt=HyperoptConfig(
                 enabled=ho_raw.get("enabled", True),
@@ -247,6 +250,7 @@ def load_config(path: str) -> AppConfig:
                 disable_param_export=ho_raw.get("disable_param_export", True),
                 extra_args=ho_raw.get("extra_args", ""),
                 timeout_minutes=ho_raw.get("timeout_minutes", 360),
+                delete_params_json=ho_raw.get("delete_params_json", False),
             ),
             extract=ExtractConfig(
                 enabled=ex_raw.get("enabled", True),
