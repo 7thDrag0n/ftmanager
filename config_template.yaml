@@ -61,7 +61,7 @@ strategies:
       disable_param_export: true
       extra_args: ""
       timeout_minutes: 360
-      delete_params_json: false          # Delete <strategy_name>.json before hyperopt
+      delete_params_json: true          # Delete <strategy_name>.json before hyperopt (recommeded)
 
     extract:
       enabled: true                        # Enable/disable auto-extraction of best epoch
