@@ -1,25 +1,28 @@
 # FreqTrade Manager Configuration
-# All paths are relative to freqtrade_directory unless absolute
+# All paths are relative to the strategy's freqtrade.directory unless absolute
 # Reload configs are relative to THIS manager's folder
 #
 # Platform notes:
 #   Windows paths use backslashes: "D:\\python\\freqtrade"
 #   Linux paths use forward slashes: "/home/user/freqtrade"
 #   Executable resolution is automatic (Scripts/*.exe vs bin/*)
-
-freqtrade:
-  # Windows example:
-  directory: "D:\\python\\freqtrade"
-  venv_path: ".venv310"                    # Relative to freqtrade directory
-  # Linux example:
-  # directory: "/home/user/freqtrade"
-  # venv_path: ".venv"
+#
+# Each strategy has its own freqtrade installation — hyperopt locks the instance,
+# so multiple strategies require separate freqtrade folders.
 
 # Multiple strategies supported - each with its own workflow
 strategies:
   - name: "Predict_LSTM_Futures"           # Display name / identifier in manager
     strategy_name: "Predict_LSTM_Futures"  # Actual --strategy parameter for freqtrade
     enabled: true
+
+    freqtrade:
+      # Windows example:
+      directory: "D:\\python\\freqtrade"
+      venv_path: ".venv310"                    # Relative to freqtrade directory
+      # Linux example:
+      # directory: "/home/user/freqtrade"
+      # venv_path: ".venv"
 
     # Decoupled configs — each freqtrade command uses its own config
     # All paths relative to freqtrade.directory
