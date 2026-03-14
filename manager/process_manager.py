@@ -539,7 +539,18 @@ class ProcessManager:
             result_code[0] = rc
             completion.set()
 
-        if not self.start_process(ptype, strategy, cmd, on_line, _on_complete):
+        started = self.start_process(ptype, strategy, cmd, on_line, _on_complete)
+
+        if not started:
+            # Process already running — wait for it to finish instead of failing.
+            # This happens when e.g. a manual backtest is running and the workflow
+            # reaches the backtest step.
+            existing = self.state.get_process(ptype, strategy.name)
+            if existing and existing.status == ProcessStatus.RUNNING:
+                key = self._proc_key(ptype, strategy.name)
+                logger.info(f"Process {key} already running (PID {existing.pid}) — workflow will wait for it")
+                self.state.add_log(f"[{key}] Already running — waiting for completion")
+                return self._wait_for_existing(ptype, strategy.name, timeout, cancel_event)
             return -2
 
         start = time.time()
@@ -564,6 +575,35 @@ class ProcessManager:
             completion.wait(timeout=1)
 
         return result_code[0]
+
+    def _wait_for_existing(
+        self,
+        ptype: ProcessType,
+        strategy_name: str,
+        timeout: int = 0,
+        cancel_event: threading.Event | None = None,
+    ) -> int:
+        """Wait for an already-running process to finish by polling its state."""
+        start = time.time()
+        while True:
+            info = self.state.get_process(ptype, strategy_name)
+            if not info or info.status not in (ProcessStatus.RUNNING, ProcessStatus.STARTING):
+                # Process finished — return its exit code
+                rc = info.return_code if info else -9
+                logger.info(f"Existing {ptype.value}:{strategy_name} finished with code {rc}")
+                return rc
+
+            if cancel_event and cancel_event.is_set():
+                logger.info(f"Cancellation during wait for existing {ptype.value}:{strategy_name}")
+                self.stop_process(ptype, strategy_name)
+                return -1
+
+            if timeout > 0 and (time.time() - start) > timeout:
+                logger.warning(f"Timeout waiting for existing {ptype.value}:{strategy_name}")
+                self.stop_process(ptype, strategy_name)
+                return -1
+
+            time.sleep(1)
 
     def set_process_timeout(self, ptype: ProcessType, strategy_name: str, timeout_seconds: int):
         """Set a timeout on a running process with a watchdog that kills it when expired.

@@ -126,8 +126,9 @@ class Workflow:
 
             # Step 2: Download data
             if strategy.download_data.enabled:
-                self._step(name, "Downloading data...")
-                self.state.add_log(f"[workflow:{name}] Downloading pair data")
+                dl_already_running = self.proc_mgr.is_running(ProcessType.DOWNLOAD, name)
+                self._step(name, "Downloading data..." if not dl_already_running else "Waiting for running download...")
+                self.state.add_log(f"[workflow:{name}] {'Downloading pair data' if not dl_already_running else 'Download already running — waiting for it'}")
                 rc = self.proc_mgr.run_and_wait(
                     ProcessType.DOWNLOAD, strategy,
                     cancel_event=cancel_event, timeout=0,
@@ -141,10 +142,11 @@ class Workflow:
 
             # Step 3: Backtest (updates LSTM models)
             if strategy.backtest.enabled:
-                if strategy.backtest.delete_params_json:
+                bt_already_running = self.proc_mgr.is_running(ProcessType.BACKTEST, name)
+                if strategy.backtest.delete_params_json and not bt_already_running:
                     self._delete_params_json(strategy, "backtest")
-                self._step(name, "Running backtest...")
-                self.state.add_log(f"[workflow:{name}] Running backtest (model update)")
+                self._step(name, "Running backtest..." if not bt_already_running else "Waiting for running backtest...")
+                self.state.add_log(f"[workflow:{name}] {'Running backtest (model update)' if not bt_already_running else 'Backtest already running — waiting for it'}")
                 bt_timeout = strategy.backtest.timeout_minutes * 60 if strategy.backtest.timeout_minutes > 0 else 0
                 rc = self.proc_mgr.run_and_wait(
                     ProcessType.BACKTEST, strategy,
@@ -160,9 +162,10 @@ class Workflow:
             # Step 4: Run hyperopt with live extract+reload on new best
             best_epoch = None
             if strategy.hyperopt.enabled:
-                if strategy.hyperopt.delete_params_json:
+                ho_already_running = self.proc_mgr.is_running(ProcessType.HYPEROPT, name)
+                if strategy.hyperopt.delete_params_json and not ho_already_running:
                     self._delete_params_json(strategy, "hyperopt")
-                self._step(name, "Running hyperopt...")
+                self._step(name, "Running hyperopt..." if not ho_already_running else "Waiting for running hyperopt...")
                 best_epoch = self._run_hyperopt_with_monitoring(
                     strategy, cancel_event, restart_mode=restart_mode,
                 )
