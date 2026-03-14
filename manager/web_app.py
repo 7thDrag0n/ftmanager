@@ -72,7 +72,7 @@ def create_app(
     def _delete_params_json(strat: StrategyConfig, step_name: str):
         """Delete strategy params JSON before manual backtest/hyperopt start."""
         params_path = os.path.join(
-            cfg_holder.get().freqtrade_dir, "user_data", "strategies",
+            strat.freqtrade_dir, "user_data", "strategies",
             f"{strat.strategy_name}.json"
         )
         if os.path.isfile(params_path):
@@ -225,12 +225,13 @@ def create_app(
         """List all .fthypt files for a strategy."""
         import glob as _glob
         cfg = cfg_holder.get()
-        base_dir = os.path.join(cfg.freqtrade_dir, "user_data", "hyperopt_results")
+        strat = cfg.get_strategy(strategy_name)
+        if not strat:
+            raise HTTPException(404, f"Strategy {strategy_name} not found")
+        base_dir = os.path.join(strat.freqtrade_dir, "user_data", "hyperopt_results")
         if not os.path.isdir(base_dir):
             return JSONResponse({"files": []})
-        # Use the actual freqtrade strategy class name for the glob
-        strat = cfg.get_strategy(strategy_name)
-        glob_name = strat.strategy_name if strat else strategy_name
+        glob_name = strat.strategy_name
         pattern = os.path.join(base_dir, f"*{glob_name}*.fthypt")
         files = []
         for fpath in sorted(_glob.glob(pattern), key=os.path.getmtime, reverse=True):
@@ -250,7 +251,7 @@ def create_app(
         if not strat:
             raise HTTPException(404, f"Strategy {strategy_name} not found")
 
-        base_dir = os.path.join(cfg.freqtrade_dir, "user_data", "hyperopt_results")
+        base_dir = os.path.join(strat.freqtrade_dir, "user_data", "hyperopt_results")
         if file:
             fpath = os.path.join(base_dir, os.path.basename(file))  # prevent path traversal
         else:
@@ -325,13 +326,13 @@ def create_app(
     async def get_config():
         cfg = cfg_holder.get()
         return JSONResponse({
-            "freqtrade_dir": cfg.freqtrade_dir,
-            "venv_path": cfg.venv_path,
             "strategies": [
                 {
                     "name": s.name,
                     "strategy_name": s.strategy_name,
                     "enabled": s.enabled,
+                    "freqtrade_dir": s.freqtrade_dir,
+                    "venv_path": s.venv_path,
                     "restart_mode": s.restart_mode,
                     "trade_config": s.trade_config,
                     "download_config": s.download_config,

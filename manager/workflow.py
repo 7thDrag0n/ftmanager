@@ -230,7 +230,7 @@ class Workflow:
     def _cleanup_old_fthypt(self, strategy: StrategyConfig):
         """Delete fthypt files older than cleanup_days. Broadcasts refresh to frontend."""
         days = strategy.schedule.cleanup_days
-        base_dir = os.path.join(self.config.freqtrade_dir, "user_data", "hyperopt_results")
+        base_dir = os.path.join(strategy.freqtrade_dir, "user_data", "hyperopt_results")
         if not os.path.isdir(base_dir):
             return
 
@@ -259,7 +259,7 @@ class Workflow:
         """Delete the strategy's hyperopt params JSON file (e.g. Predict_LSTM_Futures.json).
         Called before backtest or hyperopt when the corresponding delete_params_json flag is set."""
         params_path = os.path.join(
-            self.config.freqtrade_dir, "user_data", "strategies",
+            strategy.freqtrade_dir, "user_data", "strategies",
             f"{strategy.strategy_name}.json"
         )
         if os.path.isfile(params_path):
@@ -379,7 +379,7 @@ class Workflow:
         except Exception:
             criteria = strategy.epoch_criteria
 
-        base_dir = os.path.join(self.config.freqtrade_dir, "user_data", "hyperopt_results")
+        base_dir = os.path.join(strategy.freqtrade_dir, "user_data", "hyperopt_results")
         lr_path = os.path.join(base_dir, ".last_result.json")
         final_best = None
         try:

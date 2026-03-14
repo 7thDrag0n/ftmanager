@@ -119,14 +119,14 @@ class ProcessManager:
         return f"{ptype.value}:{strategy}"
 
     def _cfg_path(self, strategy: StrategyConfig, config_attr: str) -> str:
-        """Resolve a config path relative to freqtrade dir."""
+        """Resolve a config path relative to strategy's freqtrade dir."""
         rel = getattr(strategy, config_attr, "config.json")
-        return os.path.join(self.config.freqtrade_dir, rel)
+        return os.path.join(strategy.freqtrade_dir, rel)
 
     # ── Command builders ──────────────────────────────────────────────
 
     def build_trade_cmd(self, strategy: StrategyConfig) -> list[str]:
-        exe = self.config.freqtrade_exe
+        exe = strategy.freqtrade_exe
         cfg = self._cfg_path(strategy, "trade_config")
         cmd = [exe, "trade", "--config", cfg, "--strategy", strategy.strategy_name]
         if strategy.trade_extra_args:
@@ -134,7 +134,7 @@ class ProcessManager:
         return cmd
 
     def build_download_cmd(self, strategy: StrategyConfig) -> list[str]:
-        exe = self.config.freqtrade_exe
+        exe = strategy.freqtrade_exe
         cfg = self._cfg_path(strategy, "download_config")
         cmd = [exe, "download-data", "--config", cfg]
         timerange = calc_timerange(strategy.download_data.days_back, 0)
@@ -145,7 +145,7 @@ class ProcessManager:
         return cmd
 
     def build_backtest_cmd(self, strategy: StrategyConfig) -> list[str]:
-        exe = self.config.freqtrade_exe
+        exe = strategy.freqtrade_exe
         cfg = self._cfg_path(strategy, "backtest_config")
         cmd = [exe, "backtesting", "--config", cfg, "--strategy", strategy.strategy_name]
         timerange = calc_timerange(
@@ -158,7 +158,7 @@ class ProcessManager:
         return cmd
 
     def build_hyperopt_cmd(self, strategy: StrategyConfig) -> list[str]:
-        exe = self.config.freqtrade_exe
+        exe = strategy.freqtrade_exe
         cfg = self._cfg_path(strategy, "hyperopt_config")
         cmd = [exe, "hyperopt", "--config", cfg, "--strategy", strategy.strategy_name]
         cmd += ["--hyperopt-loss", strategy.hyperopt.loss_function]
@@ -180,14 +180,14 @@ class ProcessManager:
         return cmd
 
     def build_hyperopt_show_cmd(self, strategy: StrategyConfig, epoch_num: int) -> list[str]:
-        exe = self.config.freqtrade_exe
+        exe = strategy.freqtrade_exe
         cfg = self._cfg_path(strategy, "hyperopt_config")
         return [exe, "hyperopt-show", "--config", cfg, "-n", str(epoch_num)]
 
     def build_reload_cmd(self, strategy: StrategyConfig) -> list[str]:
         """Build freqtrade-client reload_config command.
         Config is relative to the manager folder."""
-        client_exe = self.config.freqtrade_client_exe
+        client_exe = strategy.freqtrade_client_exe
         cfg = os.path.join(self.config.manager_dir, strategy.reload_client_config)
         return [client_exe, "--config", cfg, "reload_config"]
 
@@ -240,8 +240,8 @@ class ProcessManager:
         self.state.add_log(f"[{key}] Starting: {cmd_str}")
         self.state.broadcast("process_starting", {"key": key, "cmd": cmd_str})
 
-        # Determine cwd: reload commands run from manager dir, others from freqtrade dir
-        cwd = self.config.manager_dir if ptype == ProcessType.RELOAD else self.config.freqtrade_dir
+        # Determine cwd: reload commands run from manager dir, others from strategy's freqtrade dir
+        cwd = self.config.manager_dir if ptype == ProcessType.RELOAD else strategy.freqtrade_dir
 
         try:
             popen_kwargs = dict(

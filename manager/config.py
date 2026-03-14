@@ -79,6 +79,10 @@ class StrategyConfig:
     strategy_name: str = ""                            # Actual --strategy param
     enabled: bool = True
 
+    # FreqTrade installation for this strategy (each strategy can use its own)
+    freqtrade_dir: str = ""
+    venv_path: str = ".venv"
+
     # Decoupled config files (relative to freqtrade dir)
     trade_config: str = "config.json"
     download_config: str = "config.json"
@@ -104,6 +108,24 @@ class StrategyConfig:
         if not self.strategy_name:
             self.strategy_name = self.name
 
+    @property
+    def freqtrade_exe(self) -> str:
+        if IS_WINDOWS:
+            return os.path.join(self.freqtrade_dir, self.venv_path, "Scripts", "freqtrade.exe")
+        return os.path.join(self.freqtrade_dir, self.venv_path, "bin", "freqtrade")
+
+    @property
+    def python_exe(self) -> str:
+        if IS_WINDOWS:
+            return os.path.join(self.freqtrade_dir, self.venv_path, "Scripts", "python.exe")
+        return os.path.join(self.freqtrade_dir, self.venv_path, "bin", "python")
+
+    @property
+    def freqtrade_client_exe(self) -> str:
+        if IS_WINDOWS:
+            return os.path.join(self.freqtrade_dir, self.venv_path, "Scripts", "freqtrade-client.exe")
+        return os.path.join(self.freqtrade_dir, self.venv_path, "bin", "freqtrade-client")
+
 
 @dataclass
 class WebConfig:
@@ -127,8 +149,6 @@ class MonitoringConfig:
 
 @dataclass
 class AppConfig:
-    freqtrade_dir: str = ""
-    venv_path: str = ".venv312"
     strategies: list[StrategyConfig] = field(default_factory=list)
     web: WebConfig = field(default_factory=WebConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -137,24 +157,6 @@ class AppConfig:
 
     # Set at runtime by main.py
     manager_dir: str = ""
-
-    @property
-    def freqtrade_exe(self) -> str:
-        if IS_WINDOWS:
-            return os.path.join(self.freqtrade_dir, self.venv_path, "Scripts", "freqtrade.exe")
-        return os.path.join(self.freqtrade_dir, self.venv_path, "bin", "freqtrade")
-
-    @property
-    def python_exe(self) -> str:
-        if IS_WINDOWS:
-            return os.path.join(self.freqtrade_dir, self.venv_path, "Scripts", "python.exe")
-        return os.path.join(self.freqtrade_dir, self.venv_path, "bin", "python")
-
-    @property
-    def freqtrade_client_exe(self) -> str:
-        if IS_WINDOWS:
-            return os.path.join(self.freqtrade_dir, self.venv_path, "Scripts", "freqtrade-client.exe")
-        return os.path.join(self.freqtrade_dir, self.venv_path, "bin", "freqtrade-client")
 
     def get_strategy(self, name: str) -> StrategyConfig | None:
         for s in self.strategies:
@@ -169,8 +171,6 @@ def load_config(path: str) -> AppConfig:
         raw = yaml.safe_load(f)
 
     cfg = AppConfig()
-    cfg.freqtrade_dir = raw.get("freqtrade", {}).get("directory", "")
-    cfg.venv_path = raw.get("freqtrade", {}).get("venv_path", ".venv312")
     cfg.process_stats_interval = raw.get("process_stats_interval", 2)
     cfg.manager_dir = os.path.dirname(os.path.abspath(path))
 
@@ -205,6 +205,7 @@ def load_config(path: str) -> AppConfig:
         ex_raw = s_raw.get("extract", {})
         rs_raw = s_raw.get("restart", {})
         sc_raw = s_raw.get("schedule", {})
+        ft_raw = s_raw.get("freqtrade", {})
 
         criteria = []
         for c in s_raw.get("epoch_criteria", []):
@@ -219,6 +220,8 @@ def load_config(path: str) -> AppConfig:
             name=s_raw["name"],
             strategy_name=s_raw.get("strategy_name", s_raw["name"]),
             enabled=s_raw.get("enabled", True),
+            freqtrade_dir=ft_raw.get("directory", ""),
+            venv_path=ft_raw.get("venv_path", ".venv"),
             trade_config=s_raw.get("trade_config", "config.json"),
             download_config=s_raw.get("download_config", "config.json"),
             backtest_config=s_raw.get("backtest_config", "config.json"),

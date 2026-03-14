@@ -300,7 +300,7 @@ class HyperoptMonitor:
         epoch_counter = 0
         current_best: EpochResult | None = None
 
-        base_dir = os.path.join(self.config.freqtrade_dir, "user_data", "hyperopt_results")
+        base_dir = os.path.join(strategy.freqtrade_dir, "user_data", "hyperopt_results")
         last_result_path = os.path.join(base_dir, ".last_result.json")
 
         # Record start time — only accept files modified AFTER this
