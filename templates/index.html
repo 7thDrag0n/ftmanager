@@ -321,13 +321,17 @@ async function init() {
   tabs.innerHTML = strategies.map(s =>
     `<button class="strat-tab" onclick="selectStrat('${s.name}')">${s.name}</button>`
   ).join('');
-  selectStrat(strategies[0].name);
+  // Restore last selected strategy from URL hash, or default to first
+  const hash = location.hash.slice(1);  // remove '#'
+  const saved = strategies.find(s => s.name === hash);
+  selectStrat(saved ? saved.name : strategies[0].name);
   connectWS();
   loadSchedule();
 }
 
 function selectStrat(name) {
   strat = name;
+  history.replaceState(null, '', '#' + name);  // persist across refresh
   monitorState = { file: null, lastBest: null, lastExtracted: null, lastAction: null, waiting: false, oldFile: null };
   userOverrodeDropdown = false;
   stopResultsSyncChecker();
