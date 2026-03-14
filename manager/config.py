@@ -34,6 +34,7 @@ class BacktestConfig:
     timerange_end_days_ago: int = 0
     extra_args: str = ""
     delete_params_json: bool = False  # Delete <strategy_name>.json before backtest
+    timeout_minutes: int = 0  # 0 = no timeout
 
 
 @dataclass
@@ -236,6 +237,7 @@ def load_config(path: str) -> AppConfig:
                 timerange_end_days_ago=bt_raw.get("timerange_end_days_ago", 0),
                 extra_args=bt_raw.get("extra_args", ""),
                 delete_params_json=bt_raw.get("delete_params_json", False),
+                timeout_minutes=bt_raw.get("timeout_minutes", 0),
             ),
             hyperopt=HyperoptConfig(
                 enabled=ho_raw.get("enabled", True),

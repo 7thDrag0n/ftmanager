@@ -69,6 +69,20 @@ def create_app(
             raise HTTPException(404, f"Strategy {strategy_name} not found")
         return strat
 
+    def _delete_params_json(strat: StrategyConfig, step_name: str):
+        """Delete strategy params JSON before manual backtest/hyperopt start."""
+        params_path = os.path.join(
+            cfg_holder.get().freqtrade_dir, "user_data", "strategies",
+            f"{strat.strategy_name}.json"
+        )
+        if os.path.isfile(params_path):
+            try:
+                os.remove(params_path)
+                fname = os.path.basename(params_path)
+                state.add_log(f"[action] Deleted {fname} before {step_name}")
+            except Exception as e:
+                state.add_log(f"[action] Failed to delete params JSON: {e}")
+
     # --- Pages ---
     @app.get("/", response_class=HTMLResponse)
     async def index():
@@ -139,17 +153,31 @@ def create_app(
     @app.post("/api/backtest/start/{strategy_name}")
     async def start_backtest(strategy_name: str):
         strat = _get_strat(strategy_name)
+        if strat.backtest.delete_params_json:
+            _delete_params_json(strat, "backtest")
         state.add_log(f"[action] Starting backtest for {strategy_name}")
         ok = proc_mgr.start_process(ProcessType.BACKTEST, strat)
+        if ok and strat.backtest.timeout_minutes > 0:
+            proc_mgr.set_process_timeout(
+                ProcessType.BACKTEST, strategy_name,
+                strat.backtest.timeout_minutes * 60,
+            )
         return JSONResponse({"success": ok})
 
     @app.post("/api/hyperopt/start/{strategy_name}")
     async def start_hyperopt(strategy_name: str):
         strat = _get_strat(strategy_name)
+        if strat.hyperopt.delete_params_json:
+            _delete_params_json(strat, "hyperopt")
         state.add_log(f"[action] Starting hyperopt for {strategy_name}")
         ok = proc_mgr.start_process(ProcessType.HYPEROPT, strat)
         if ok:
             hyperopt_mon.start_monitoring(strat)
+            if strat.hyperopt.timeout_minutes > 0:
+                proc_mgr.set_process_timeout(
+                    ProcessType.HYPEROPT, strategy_name,
+                    strat.hyperopt.timeout_minutes * 60,
+                )
         return JSONResponse({"success": ok})
 
     @app.post("/api/hyperopt/stop/{strategy_name}")

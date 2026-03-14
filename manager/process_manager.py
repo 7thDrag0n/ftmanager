@@ -565,6 +565,39 @@ class ProcessManager:
 
         return result_code[0]
 
+    def set_process_timeout(self, ptype: ProcessType, strategy_name: str, timeout_seconds: int):
+        """Set a timeout on a running process with a watchdog that kills it when expired.
+        Also sets timeout_at on ProcessInfo so the frontend shows remaining time."""
+        if timeout_seconds <= 0:
+            return
+        key = self._proc_key(ptype, strategy_name)
+        info = self.state.get_process(ptype, strategy_name)
+        if not info:
+            return
+        info.timeout_at = time.time() + timeout_seconds
+        self.state.set_process(ptype, strategy_name, info)
+
+        stop_event = self._stop_events.get(key)
+
+        def _watchdog():
+            deadline = time.time() + timeout_seconds
+            while time.time() < deadline:
+                # Check if process already stopped
+                if stop_event and stop_event.is_set():
+                    return
+                cur = self.state.get_process(ptype, strategy_name)
+                if not cur or cur.status != ProcessStatus.RUNNING:
+                    return
+                time.sleep(1)
+            # Timeout reached — kill if still running
+            cur = self.state.get_process(ptype, strategy_name)
+            if cur and cur.status == ProcessStatus.RUNNING:
+                logger.warning(f"Timeout for {key} (manual start, {timeout_seconds}s)")
+                self.stop_process(ptype, strategy_name)
+
+        t = threading.Thread(target=_watchdog, name=f"timeout-{key}", daemon=True)
+        t.start()
+
     def stop_all(self):
         """Stop all running processes in parallel for fast shutdown."""
         with self._lock:

@@ -130,7 +130,7 @@ class Workflow:
                 self.state.add_log(f"[workflow:{name}] Downloading pair data")
                 rc = self.proc_mgr.run_and_wait(
                     ProcessType.DOWNLOAD, strategy,
-                    cancel_event=cancel_event, timeout=3600,
+                    cancel_event=cancel_event, timeout=0,
                 )
                 if cancel_event.is_set():
                     raise WorkflowError("Cancelled")
@@ -145,9 +145,10 @@ class Workflow:
                     self._delete_params_json(strategy, "backtest")
                 self._step(name, "Running backtest...")
                 self.state.add_log(f"[workflow:{name}] Running backtest (model update)")
+                bt_timeout = strategy.backtest.timeout_minutes * 60 if strategy.backtest.timeout_minutes > 0 else 0
                 rc = self.proc_mgr.run_and_wait(
                     ProcessType.BACKTEST, strategy,
-                    cancel_event=cancel_event, timeout=7200,
+                    cancel_event=cancel_event, timeout=bt_timeout,
                 )
                 if cancel_event.is_set():
                     raise WorkflowError("Cancelled")
