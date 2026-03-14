@@ -110,17 +110,18 @@ def main():
     logger.info("=" * 60)
     logger.info("FreqTrade Manager starting")
     logger.info(f"Config: {config_path}")
-    logger.info(f"FreqTrade dir: {config.freqtrade_dir}")
-    logger.info(f"Strategies: {[s.name for s in config.strategies]}")
+    for s in config.strategies:
+        logger.info(f"  Strategy '{s.name}': {s.freqtrade_dir} (venv: {s.venv_path})")
     logger.info(f"Web: http://{config.web.host}:{config.web.port}")
     logger.info("=" * 60)
 
-    # Validate freqtrade installation
-    ft_exe = config.freqtrade_exe
-    if not os.path.isfile(ft_exe):
-        logger.error(f"FreqTrade executable not found: {ft_exe}")
-        logger.error("Check freqtrade.directory and freqtrade.venv_path in config")
-        sys.exit(1)
+    # Validate freqtrade installation for each strategy
+    for s in config.strategies:
+        ft_exe = s.freqtrade_exe
+        if not os.path.isfile(ft_exe):
+            logger.error(f"FreqTrade executable not found for '{s.name}': {ft_exe}")
+            logger.error("Check strategy's freqtrade.directory and freqtrade.venv_path in config")
+            sys.exit(1)
 
     proc_mgr = ProcessManager(config, state)
     hyperopt_mon = HyperoptMonitor(config, state)
