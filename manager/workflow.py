@@ -86,19 +86,14 @@ class Workflow:
     def _run_workflow(self, strategy: StrategyConfig, cancel_event: threading.Event):
         name = strategy.name
         trade_was_running = self.proc_mgr.is_running(ProcessType.TRADE, name)
-        restart_mode = strategy.restart_mode
 
-        # Build summary of enabled steps
+        # Log initial step summary (informational — actual enabled checks happen at each step)
         steps_summary = []
         if strategy.download_data.enabled: steps_summary.append("download")
         if strategy.backtest.enabled: steps_summary.append("backtest")
-        if strategy.hyperopt.enabled:
-            h_parts = ["hyperopt"]
-            if strategy.extract.enabled: h_parts.append("+extract")
-            if strategy.restart.enabled: h_parts.append(f"+reload({restart_mode})")
-            steps_summary.append("".join(h_parts))
-        else:
-            steps_summary.append("hyperopt:off")
+        if strategy.hyperopt.enabled: steps_summary.append("hyperopt")
+        if strategy.extract.enabled: steps_summary.append("extract")
+        if strategy.restart.enabled: steps_summary.append("restart")
 
         try:
             self.state.set_workflow(name, WorkflowStatus.RUNNING, "Starting workflow")
@@ -106,16 +101,18 @@ class Workflow:
             self.state.clear_monitor_state(name)
             self.state.add_log(
                 f"[workflow:{name}] === WORKFLOW STARTED === "
-                f"steps=[{', '.join(steps_summary)}]"
+                f"steps=[{', '.join(steps_summary)}] (checked live at each step)"
             )
             self.state.broadcast("workflow_started", {"strategy": name})
 
             # Cleanup old fthypt files if configured
-            if strategy.schedule.cleanup_days > 0:
-                self._cleanup_old_fthypt(strategy)
+            fresh = self._reload_strategy(name) or strategy
+            if fresh.schedule.cleanup_days > 0:
+                self._cleanup_old_fthypt(fresh)
 
             # Step 1: Stop trade if running (only for hard restart mode)
-            if restart_mode == "hard" and strategy.restart.enabled:
+            fresh = self._reload_strategy(name) or strategy
+            if fresh.restart_mode == "hard" and fresh.restart.enabled:
                 if self.proc_mgr.is_running(ProcessType.TRADE, name):
                     self._step(name, "Stopping trade (hard)...")
                     self.state.add_log(f"[workflow:{name}] Stopping active trade (hard restart mode)")
@@ -125,12 +122,13 @@ class Workflow:
                         raise WorkflowError("Cancelled")
 
             # Step 2: Download data
-            if strategy.download_data.enabled:
+            fresh = self._reload_strategy(name) or strategy
+            if fresh.download_data.enabled:
                 dl_already_running = self.proc_mgr.is_running(ProcessType.DOWNLOAD, name)
                 self._step(name, "Downloading data..." if not dl_already_running else "Waiting for running download...")
                 self.state.add_log(f"[workflow:{name}] {'Downloading pair data' if not dl_already_running else 'Download already running — waiting for it'}")
                 rc = self.proc_mgr.run_and_wait(
-                    ProcessType.DOWNLOAD, strategy,
+                    ProcessType.DOWNLOAD, fresh,
                     cancel_event=cancel_event, timeout=0,
                 )
                 if cancel_event.is_set():
@@ -141,15 +139,16 @@ class Workflow:
                 self.state.add_log(f"[workflow:{name}] Download: SKIPPED (disabled)")
 
             # Step 3: Backtest (updates LSTM models)
-            if strategy.backtest.enabled:
+            fresh = self._reload_strategy(name) or strategy
+            if fresh.backtest.enabled:
                 bt_already_running = self.proc_mgr.is_running(ProcessType.BACKTEST, name)
-                if strategy.backtest.delete_params_json and not bt_already_running:
-                    self._delete_params_json(strategy, "backtest")
+                if fresh.backtest.delete_params_json and not bt_already_running:
+                    self._delete_params_json(fresh, "backtest")
                 self._step(name, "Running backtest..." if not bt_already_running else "Waiting for running backtest...")
                 self.state.add_log(f"[workflow:{name}] {'Running backtest (model update)' if not bt_already_running else 'Backtest already running — waiting for it'}")
-                bt_timeout = strategy.backtest.timeout_minutes * 60 if strategy.backtest.timeout_minutes > 0 else 0
+                bt_timeout = fresh.backtest.timeout_minutes * 60 if fresh.backtest.timeout_minutes > 0 else 0
                 rc = self.proc_mgr.run_and_wait(
-                    ProcessType.BACKTEST, strategy,
+                    ProcessType.BACKTEST, fresh,
                     cancel_event=cancel_event, timeout=bt_timeout,
                 )
                 if cancel_event.is_set():
@@ -161,13 +160,14 @@ class Workflow:
 
             # Step 4: Run hyperopt with live extract+reload on new best
             best_epoch = None
-            if strategy.hyperopt.enabled:
+            fresh = self._reload_strategy(name) or strategy
+            if fresh.hyperopt.enabled:
                 ho_already_running = self.proc_mgr.is_running(ProcessType.HYPEROPT, name)
-                if strategy.hyperopt.delete_params_json and not ho_already_running:
-                    self._delete_params_json(strategy, "hyperopt")
+                if fresh.hyperopt.delete_params_json and not ho_already_running:
+                    self._delete_params_json(fresh, "hyperopt")
                 self._step(name, "Running hyperopt..." if not ho_already_running else "Waiting for running hyperopt...")
                 best_epoch = self._run_hyperopt_with_monitoring(
-                    strategy, cancel_event, restart_mode=restart_mode,
+                    fresh, cancel_event, restart_mode=fresh.restart_mode,
                 )
                 if cancel_event.is_set():
                     raise WorkflowError("Cancelled")
@@ -183,9 +183,10 @@ class Workflow:
 
             # Ensure trade is running at the end (in case no best was found to trigger reload,
             # or hyperopt was disabled but trade was stopped for download/backtest)
+            fresh = self._reload_strategy(name) or strategy
             if trade_was_running and not self.proc_mgr.is_running(ProcessType.TRADE, name):
                 self.state.add_log(f"[workflow:{name}] Restoring trade (was running before workflow)")
-                self.proc_mgr.start_process(ProcessType.TRADE, strategy)
+                self.proc_mgr.start_process(ProcessType.TRADE, fresh)
 
             self.state.set_workflow(name, WorkflowStatus.COMPLETED, "Workflow completed")
             self.state.add_log(f"[workflow:{name}] === WORKFLOW COMPLETED ===")
@@ -200,7 +201,8 @@ class Workflow:
             # Try to restart trade on failure if it was running before
             if trade_was_running and not self.proc_mgr.is_running(ProcessType.TRADE, name):
                 self.state.add_log(f"[workflow:{name}] Attempting to restart trade after failure")
-                self.proc_mgr.start_process(ProcessType.TRADE, strategy)
+                fresh_err = self._reload_strategy(name) or strategy
+                self.proc_mgr.start_process(ProcessType.TRADE, fresh_err)
 
         except Exception as e:
             logger.exception(f"Unexpected error in workflow for {name}")
@@ -210,7 +212,8 @@ class Workflow:
 
             if trade_was_running and not self.proc_mgr.is_running(ProcessType.TRADE, name):
                 self.state.add_log(f"[workflow:{name}] Attempting to restart trade after error")
-                self.proc_mgr.start_process(ProcessType.TRADE, strategy)
+                fresh_err = self._reload_strategy(name) or strategy
+                self.proc_mgr.start_process(ProcessType.TRADE, fresh_err)
 
         finally:
             self.hyperopt_mon.stop_monitoring(name)
@@ -229,6 +232,16 @@ class Workflow:
         logger.info(f"[workflow:{strategy_name}] {step}")
         self.state.set_workflow(strategy_name, WorkflowStatus.RUNNING, step)
         self.state.broadcast("workflow_step", {"strategy": strategy_name, "step": step})
+
+    def _reload_strategy(self, name: str) -> StrategyConfig | None:
+        """Reload strategy config from disk to pick up runtime flag changes (e.g. toggling checkboxes)."""
+        try:
+            from .config import load_config
+            cfg = load_config(self._config_path)
+            return cfg.get_strategy(name)
+        except Exception as e:
+            logger.debug(f"Config reload failed, using cached: {e}")
+            return None
 
     def _cleanup_old_fthypt(self, strategy: StrategyConfig):
         """Delete fthypt files older than cleanup_days. Broadcasts refresh to frontend."""
@@ -314,9 +327,12 @@ class Workflow:
                 )
                 return
 
-            if strategy.extract.enabled:
+            # Re-check enabled flags at runtime (user may have toggled during hyperopt)
+            cur = self._reload_strategy(strategy.name) or strategy
+
+            if cur.extract.enabled:
                 self.state.add_log(f"[workflow:{strategy.name}] Extracting epoch {epoch.epoch}...")
-                success = self._extract_epoch(strategy, epoch.epoch)
+                success = self._extract_epoch(cur, epoch.epoch)
                 if not success:
                     self.state.add_log(f"[workflow:{strategy.name}] Extract failed for epoch {epoch.epoch}")
                     self.state.broadcast("hyperopt_monitor_status", {
@@ -334,9 +350,9 @@ class Workflow:
                 })
 
                 # Reload trade if enabled
-                if strategy.restart.enabled:
+                if cur.restart.enabled:
                     self.state.add_log(f"[workflow:{strategy.name}] Reloading trade after new best...")
-                    self._reload_trade(strategy, restart_mode, cancel_event)
+                    self._reload_trade(cur, cur.restart_mode, cancel_event)
                     self.state.broadcast("hyperopt_monitor_status", {
                         "strategy": strategy.name,
                         "action": "reloaded",
@@ -416,9 +432,10 @@ class Workflow:
 
         # ── EXTRACT + RELOAD (if needed) ───────────────────────────────
         # Use final_best as the definitive result for extraction.
-        # In live mode: re-extract only if final best differs from what was already extracted.
-        # In deferred mode: extract the final best (nothing was extracted during hyperopt).
-        if final_best and strategy.extract.enabled:
+        # Re-read enabled flags at runtime (user may have toggled during hyperopt).
+        cur = self._reload_strategy(strategy.name) or strategy
+
+        if final_best and cur.extract.enabled:
             need_extract = False
 
             if live_mode:
@@ -438,16 +455,18 @@ class Workflow:
                     f"[workflow:{strategy.name}] Extracting best: epoch {final_best.epoch} "
                     f"(profit={final_best.profit_total_pct:.2f}%, dd={final_best.max_drawdown:.2f}%)"
                 )
-                success = self._extract_epoch(strategy, final_best.epoch)
+                success = self._extract_epoch(cur, final_best.epoch)
                 if success:
                     self.state.broadcast("hyperopt_monitor_status", {
                         "strategy": strategy.name,
                         "action": "extracted",
                         "epoch": final_best.to_dict(),
                     })
-                    if strategy.restart.enabled:
+                    # Re-check restart flag (may have changed)
+                    cur = self._reload_strategy(strategy.name) or cur
+                    if cur.restart.enabled:
                         self.state.add_log(f"[workflow:{strategy.name}] Reloading trade with best epoch...")
-                        self._reload_trade(strategy, restart_mode, cancel_event)
+                        self._reload_trade(cur, cur.restart_mode, cancel_event)
                         self.state.broadcast("hyperopt_monitor_status", {
                             "strategy": strategy.name,
                             "action": "reloaded",
