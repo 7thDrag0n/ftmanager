@@ -489,16 +489,27 @@ class Workflow:
 
     def _reload_trade(self, strategy: StrategyConfig, restart_mode: str,
                        cancel_event: threading.Event):
-        """Reload or restart the trade process."""
+        """Reload or restart the trade process.
+        If trade is not running, start it first (graceful needs a running process to reload)."""
         try:
+            trade_running = self.proc_mgr.is_running(ProcessType.TRADE, strategy.name)
+
             if restart_mode == "graceful":
+                if not trade_running:
+                    # Graceful reload needs a running trade to send reload_config to
+                    self.state.add_log(f"[workflow:{strategy.name}] Trade not running — starting before reload")
+                    self.proc_mgr.start_process(ProcessType.TRADE, strategy)
+                    time.sleep(10)  # Let trade initialize its API
+                    if cancel_event.is_set():
+                        return
                 self._graceful_reload(strategy, cancel_event)
             else:
-                # Hard restart: stop then start
-                if self.proc_mgr.is_running(ProcessType.TRADE, strategy.name):
+                # Hard restart: stop (if running) then start
+                if trade_running:
                     self.proc_mgr.stop_process(ProcessType.TRADE, strategy.name, timeout=60)
                     time.sleep(3)
                 self.proc_mgr.start_process(ProcessType.TRADE, strategy)
+
             self.state.add_log(f"[workflow:{strategy.name}] Trade reloaded ({restart_mode})")
         except Exception as e:
             self.state.add_log(f"[workflow:{strategy.name}] Trade reload failed: {e}")
